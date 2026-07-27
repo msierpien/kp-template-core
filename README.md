@@ -19,18 +19,34 @@ pakietu, więc kompilator w trzech repozytoriach pokazuje, co wymaga uwagi.
 ## Instalacja w aplikacji
 
 Pakiet leży w GitHub Packages, więc rejestr trzeba wskazać per scope.
-W repozytorium konsumenta (`.npmrc`):
+W repozytorium konsumenta (`.npmrc`) idzie **wyłącznie** mapowanie:
 
 ```
 @msierpien:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${NPM_TOKEN}
 ```
 
-`NPM_TOKEN` to token z uprawnieniem **`read:packages`**:
+Token (uprawnienie **`read:packages`**) musi być na poziomie **użytkownika**.
+pnpm celowo nie rozwija zmiennych w danych logowania z pliku commitowanego do
+repozytorium — chroni przed wyciekiem tokenu do obcego rejestru — więc
+`//npm.pkg.github.com/:_authToken=${NPM_TOKEN}` w `.npmrc` projektu **zostanie
+zignorowane** i instalacja skończy się `401`.
 
-- lokalnie — w powłoce (`export NPM_TOKEN=...`),
-- na Vercelu — w zmiennych środowiskowych projektu (kp-admin i kp-client),
-- na serwerze API — w `.env` używanym przy budowaniu obrazu.
+**Lokalnie** — w `~/.npmrc`:
+
+```bash
+printf '//npm.pkg.github.com/:_authToken=%s\n' "$NPM_TOKEN" > ~/.npmrc && chmod 600 ~/.npmrc
+```
+
+**Vercel** — zmienna `NPM_TOKEN` w Settings → Environment Variables, plus
+nadpisany Install Command (Settings → Build & Development Settings):
+
+```
+echo "//npm.pkg.github.com/:_authToken=$NPM_TOKEN" >> ~/.npmrc && pnpm install
+```
+
+**Docker (kp-api)** — sekret montowany jako `/root/.npmrc` na czas `RUN`; nigdy
+`ENV` ani `.npmrc` z wpisanym tokenem, bo zostaje w warstwie obrazu na zawsze.
+Szczegóły w `kp-api/Dockerfile` i `docker-compose.production.yml`.
 
 Potem zwyczajnie:
 
