@@ -5,7 +5,7 @@
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/msierpien/kp-template-core.git"
+    "url": "git+https://github.com/msierpien/kp-template-core.git"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

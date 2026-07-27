@@ -6,6 +6,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Reczne uruchomienie z zakladki Actions - przydatne, gdy publikacja padla
+  # i chcesz powtorzyc ja bez ruszania tagow.
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -16,20 +19,30 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@msierpien'
 
-      - run: npm install
+      # `ci`, nie `install`: lockfile jest w repozytorium, a publikowac chcemy
+      # dokladnie to, co przetestowalismy.
+      - run: npm ci
 
       # Testy i typecheck przed publikacja - wersji w rejestrze nie da sie
       # nadpisac, wiec zly build zostaje tam na zawsze.
       - run: npm test
 
-      - run: npm publish
+      # Wersja z rejestru zamiast domysłu npm - w razie odmowy widac, czy to
+      # kwestia uprawnien (403), czy juz istniejacej wersji (409).
+      - run: npm publish --loglevel verbose
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Log npm z pelnym bledem, gdy cos pojdzie nie tak - inaczej w Actions
+      # widac tylko "exit code 1".
+      - name: Log npm po bledzie
+        if: failure()
+        run: cat "$(npm config get cache)/_logs/"*-debug-0.log || true
