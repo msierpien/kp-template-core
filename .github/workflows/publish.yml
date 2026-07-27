@@ -1,0 +1,35 @@
+name: Publikacja pakietu
+
+# Wydanie wersji: podnies "version" w package.json, scommituj, a potem
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Bez tego GITHUB_TOKEN nie ma prawa zapisu do rejestru pakietow.
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@msierpien'
+
+      - run: npm install
+
+      # Testy i typecheck przed publikacja - wersji w rejestrze nie da sie
+      # nadpisac, wiec zly build zostaje tam na zawsze.
+      - run: npm test
+
+      - run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
