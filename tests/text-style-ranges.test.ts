@@ -43,14 +43,40 @@ test('style dla fabrica licza sie po zawinietych liniach', () => {
   const text = 'Babcie Blanke i Dziadka Antka';
   const chars = resolveCharStyles(text, [{ start: 7, end: 13, fontWeight: 700 }]);
 
-  // Tak fabric zawinal tekst w ramce - druga linia zaczyna sie od "Blanke".
-  const lines = ['Babcie ', 'Blanke i Dziadka Antka'];
-  const styles = buildFabricTextStyles(lines, chars);
+  // Fabric zjada spacje na zlamaniu - druga linia zaczyna sie od "Blanke",
+  // a w surowym tekscie ten znak ma indeks 7, nie 6.
+  const lines = ['Babcie', 'Blanke i Dziadka Antka'];
+  const styles = buildFabricTextStyles(text, lines, chars);
 
   assert.equal(styles[0], undefined, 'pierwsza linia nie ma stylowanych znakow');
   assert.deepEqual(styles[1][0], { fontWeight: 700 });
   assert.deepEqual(styles[1][5], { fontWeight: 700 });
   assert.equal(styles[1][6], undefined);
+});
+
+test('kolejne zlamania nie przesuwaja stylu', () => {
+  const text = 'Babcie Blanke i Dziadka Antka na uroczystosc';
+  // Ostatnie slowo - najbardziej narazone na kumulacje bledu.
+  const chars = resolveCharStyles(text, [{ start: 33, end: 44, fontStyle: 'italic' }]);
+
+  // Zawijanie fabrica dla ramki 150 px (sprawdzone na zywym obiekcie).
+  const lines = ['Babcie Blanke i', 'Dziadka Antka', 'na uroczystosc'];
+  const styles = buildFabricTextStyles(text, lines, chars);
+
+  assert.equal(styles[0], undefined);
+  assert.equal(styles[1], undefined);
+  assert.deepEqual(styles[2][3], { fontStyle: 'italic' }, 'kursywa zaczyna sie od "uroczystosc"');
+  assert.equal(styles[2][2], undefined, 'spacja przed slowem zostaje bez stylu');
+});
+
+test('twardy koniec linii tez nie rozjezdza indeksow', () => {
+  const text = 'wraz z Rodzicami\nz radoscia pragnie zaprosic';
+  const chars = resolveCharStyles(text, [{ start: 17, end: 28, fontWeight: 700 }]);
+  const lines = ['wraz z Rodzicami', 'z radoscia', 'pragnie zaprosic'];
+  const styles = buildFabricTextStyles(text, lines, chars);
+
+  assert.equal(styles[0], undefined);
+  assert.deepEqual(styles[1][0], { fontWeight: 700 }, 'pogrubienie startuje za znakiem nowej linii');
 });
 
 test('normalizeStyleRanges skleja sasiadujace zakresy o tym samym stylu', () => {

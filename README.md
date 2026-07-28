@@ -105,13 +105,16 @@ properties.styleRanges = [{ start: 7, end: 13, fontWeight: 700 }]
 
 Fabric trzyma style pod numerami linii po zawinięciu — a zawijanie zmienia się
 z szerokością ramki i treścią, więc styl przypięty do linii rozjeżdżałby się
-przy każdej poprawce. Konwersja idzie przez helpery, żeby edytor, portal
-i wydruk liczyły ją identycznie:
+przy każdej poprawce. Do tego fabric **zjada separator na złamaniu** (spację
+przy zawijaniu, `\n` przy twardym końcu linii), więc sumowanie długości linii
+przesuwałoby style o znak na każde złamanie — `buildFabricTextStyles` szuka
+każdej linii w surowym tekście zamiast sumować. Konwersja idzie przez helpery,
+żeby edytor, portal i wydruk liczyły ją identycznie:
 
 | Funkcja | Do czego |
 |---|---|
 | `resolveCharStyles(text, ranges)` | Styl każdego znaku po złożeniu zakresów (późniejszy wygrywa, indeksy poza tekstem przycięte) |
-| `buildFabricTextStyles(lines, charStyles)` | Struktura `{ nrLinii: { nrZnaku: styl } }` dla fabrica — `lines` podaje konsument, bo tylko on zna swoje zawijanie |
+| `buildFabricTextStyles(text, lines, charStyles)` | Struktura `{ nrLinii: { nrZnaku: styl } }` dla fabrica — `lines` podaje konsument, bo tylko on zna swoje zawijanie |
 | `normalizeStyleRanges(text, ranges)` | Posprzątane zakresy do zapisu (sklejone sąsiednie o tym samym stylu) |
 
 ## Tryb druku

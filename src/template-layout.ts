@@ -730,11 +730,16 @@ export function resolveCharStyles(
  * Struktura `styles` dla fabrica: { nrLinii: { nrZnaku: styl } }.
  *
  * `lines` to linie PO zawinieciu, w kolejnosci renderowania - dostarcza je
- * konsument (fabric zna swoje zawijanie, my nie). Znaki konca linii wstawione
- * przez zawijanie nie wystepuja w surowym tekscie, wiec licznik przesuwa sie
- * tylko o dlugosc linii; twarde `\n` konsument ma podac jako osobne linie.
+ * konsument, bo tylko on zna swoje zawijanie.
+ *
+ * Kazda linia jest wyszukiwana w surowym tekscie od biezacej pozycji, zamiast
+ * sumowania dlugosci: fabric zjada separator na zlamaniu (spacje przy zawijaniu,
+ * `\n` przy twardym koncu linii), wiec proste sumowanie przesuwaloby style o
+ * jeden znak na kazde zlamanie - i pogrubienie wedrowaloby w prawo z kazda
+ * kolejna linia.
  */
 export function buildFabricTextStyles(
+  text: string,
   lines: string[],
   charStyles: Array<TextCharStyle | undefined>
 ): Record<number, Record<number, TextCharStyle>> {
@@ -742,13 +747,17 @@ export function buildFabricTextStyles(
   let cursor = 0;
 
   lines.forEach((line, lineIndex) => {
+    const found = line ? text.indexOf(line, cursor) : -1;
+    const start = found >= 0 ? found : cursor;
+
     for (let charIndex = 0; charIndex < line.length; charIndex += 1) {
-      const style = charStyles[cursor + charIndex];
+      const style = charStyles[start + charIndex];
       if (!style) continue;
       styles[lineIndex] = styles[lineIndex] || {};
       styles[lineIndex][charIndex] = style;
     }
-    cursor += line.length;
+
+    cursor = start + line.length;
   });
 
   return styles;
