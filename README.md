@@ -117,6 +117,12 @@ każdej linii w surowym tekście zamiast sumować. Konwersja idzie przez helpery
 | `buildFabricTextStyles(text, lines, charStyles)` | Struktura `{ nrLinii: { nrZnaku: styl } }` dla fabrica — `lines` podaje konsument, bo tylko on zna swoje zawijanie |
 | `normalizeStyleRanges(text, ranges)` | Posprzątane zakresy do zapisu (sklejone sąsiednie o tym samym stylu) |
 
+## Światło między literami
+
+`properties.letterSpacing` (1/1000 firetu, jednostka `charSpacing` fabrica):
+`50` = 0,05 em, wartości ujemne ściskają. Przy kaligrafii i wersalikach sam
+rozmiar pisma nie wystarcza, żeby napis oddychał.
+
 ## Tryb druku
 
 `print.mode` rozstrzyga, czy strony jadą na wspólny arkusz (`sheet` — przód

@@ -563,6 +563,14 @@ export interface TextFieldProperties {
   maxLines: number;
   textTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   editable: true;
+  /**
+   * Swiatlo miedzy literami w tysiecznych firetu (jednostka fabrica
+   * `charSpacing`): 50 = 0,05 em. Dodatnie rozstrzela, ujemne sciesnia.
+   *
+   * Przy kaligrafii i wersalikach ("na uroczystosc przyjecia") to jedyny
+   * sposob, zeby napis oddychal - sam rozmiar pisma tego nie zalatwia.
+   */
+  letterSpacing?: number;
   /** Style fragmentow - patrz TextBoxProperties.styleRanges. */
   styleRanges?: TextStyleRange[];
   // Client interaction settings
@@ -648,6 +656,14 @@ export interface TextBoxProperties {
   editable: boolean;          // czy edytowalne przez klienta
   /** Lamanie po znakach zamiast slowach (pismo CJK). */
   splitByGrapheme?: boolean;
+  /**
+   * Swiatlo miedzy literami w tysiecznych firetu (jednostka fabrica
+   * `charSpacing`): 50 = 0,05 em. Dodatnie rozstrzela, ujemne sciesnia.
+   *
+   * Przy kaligrafii i wersalikach ("na uroczystosc przyjecia") to jedyny
+   * sposob, zeby napis oddychal - sam rozmiar pisma tego nie zalatwia.
+   */
+  letterSpacing?: number;
   /**
    * Style fragmentow tekstu (pogrubienie, kursywa, kolor). Puste albo brak =
    * caly tekst w stylu warstwy.
