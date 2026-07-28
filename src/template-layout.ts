@@ -25,6 +25,18 @@ export interface TemplateLayoutJson {
   layers: Layer[];
   /** Strony projektu. Brak = jedna strona z canvas/layers powyzej. */
   pages?: TemplatePage[];
+  /**
+   * Warianty ukladu tego samego produktu - np. zaproszenie z prosba o
+   * potwierdzenie przybycia i bez niej. Kazdy wariant ma wlasny komplet stron,
+   * wiec projektant panuje nad skladem, zamiast liczyc na automatyczne
+   * dosuwanie tekstu. Brak = jeden uklad (`pages`).
+   */
+  variants?: TemplateVariant[];
+  /**
+   * Klucz pola formularza, ktorego odpowiedz wybiera wariant (pole typu lista
+   * wyboru). Brak = wariant wybiera operator albo pada pierwszy z listy.
+   */
+  variantFieldKey?: string;
   /** Rozmieszczenie stron na arkuszu drukarskim. */
   print?: PrintLayout;
   /** Wizualizacje projektu na zdjeciach produktu. */
@@ -87,6 +99,21 @@ export interface TemplatePage {
   layers: Layer[];
 }
 
+/**
+ * Jeden uklad produktu. Warianty roznia sie skladem, nie danymi - odpowiedzi
+ * klienta sa wspolne, wiec przelaczenie wariantu nie kasuje wpisanych tresci.
+ */
+export interface TemplateVariant {
+  id: string;
+  name: string;
+  /**
+   * Wartosc pola `variantFieldKey`, przy ktorej wybieramy ten wariant.
+   * Brak = wariant osiagalny tylko recznie (albo jako pierwszy z listy).
+   */
+  matchValue?: string;
+  pages: TemplatePage[];
+}
+
 export type PrintRotation = 0 | 90 | 180 | 270;
 
 export interface PrintPlacement {
@@ -130,6 +157,89 @@ export function getTemplatePages(layout: TemplateLayoutJson | null | undefined):
 /** Czy layout ma wiecej niz jedna strone. */
 export function isMultiPageLayout(layout: TemplateLayoutJson | null | undefined): boolean {
   return getTemplatePages(layout).length > 1;
+}
+
+// ============================================
+// Warianty ukladu
+// ============================================
+
+/**
+ * Warianty layoutu. Layout bez `variants` ma jeden wariant zlozony z `pages` -
+ * dzieki temu konsument moze zawsze iterowac po tej samej strukturze.
+ */
+export function getTemplateVariants(layout: TemplateLayoutJson | null | undefined): TemplateVariant[] {
+  if (!layout) return [];
+  if (Array.isArray(layout.variants) && layout.variants.length > 0) {
+    return layout.variants;
+  }
+  return [
+    {
+      id: DEFAULT_VARIANT_ID,
+      name: 'Układ podstawowy',
+      pages: getTemplatePages(layout),
+    },
+  ];
+}
+
+export const DEFAULT_VARIANT_ID = 'variant-1';
+
+/**
+ * Wariant wybrany odpowiedziami klienta.
+ *
+ * Dopasowanie idzie po `matchValue` pola `variantFieldKey`, bez rozrozniania
+ * wielkosci liter i bez spacji na brzegach - wartosci pochodza z listy wyboru
+ * wypelnianej recznie, wiec "Tak " i "tak" musza trafiac w to samo.
+ * Brak dopasowania = pierwszy wariant, zeby druk nigdy nie zostal bez ukladu.
+ */
+export function resolveTemplateVariant(
+  layout: TemplateLayoutJson | null | undefined,
+  answers?: Record<string, unknown> | null
+): TemplateVariant | null {
+  const variants = getTemplateVariants(layout);
+  if (variants.length === 0) return null;
+
+  const fieldKey = layout?.variantFieldKey;
+  const rawAnswer = fieldKey && answers ? answers[fieldKey] : undefined;
+  const answer = typeof rawAnswer === 'string' ? rawAnswer.trim().toLowerCase() : '';
+
+  if (answer) {
+    const matched = variants.find(
+      (variant) => (variant.matchValue || '').trim().toLowerCase() === answer
+    );
+    if (matched) return matched;
+  }
+
+  return variants[0];
+}
+
+/** Strony wariantu wybranego odpowiedziami - to na nich pracuje renderer. */
+export function getTemplatePagesForAnswers(
+  layout: TemplateLayoutJson | null | undefined,
+  answers?: Record<string, unknown> | null
+): TemplatePage[] {
+  const variant = resolveTemplateVariant(layout, answers);
+  return variant ? variant.pages : getTemplatePages(layout);
+}
+
+/**
+ * Zapisuje warianty, utrzymujac `pages`/`canvas`/`layers` jako lustro
+ * PIERWSZEGO wariantu.
+ *
+ * Lustro celowo nie sledzi wariantu otwartego w edytorze: konsument nieznajacy
+ * wariantow (starsza wersja aplikacji, podglad w liscie) ma zawsze pokazywac
+ * uklad podstawowy, a nie ten, ktory projektant akurat ogladal.
+ */
+export function withTemplateVariants(
+  layout: TemplateLayoutJson,
+  variants: TemplateVariant[]
+): TemplateLayoutJson {
+  const first = variants[0];
+  if (!first) return { ...layout, variants: [] };
+
+  return {
+    ...withTemplatePages(layout, first.pages),
+    variants,
+  };
 }
 
 /**

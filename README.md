@@ -12,7 +12,7 @@ pakietu, więc kompilator w trzech repozytoriach pokazuje, co wymaga uwagi.
 
 | Moduł | Zawartość |
 |---|---|
-| `template-layout` | Format projektu (`layoutJson`): strony, warstwy i ich właściwości, skład do druku, mockupy, formaty i przeliczniki mm ↔ px |
+| `template-layout` | Format projektu (`layoutJson`): strony, warianty układu, warstwy i ich właściwości, skład do druku, mockupy, formaty i przeliczniki mm ↔ px |
 | `layout-overrides` | Schemat Zod zmian wprowadzanych przez klienta w portalu + `parseLayoutOverrides` (to on decyduje, co API przyjmie do bazy) |
 | `mockup-warp` | Geometria nakładania projektu na zdjęcie produktu — ten sam kod liczy podgląd w przeglądarce i render do druku |
 
@@ -60,6 +60,34 @@ import { getTemplatePages, parseLayoutOverrides } from '@msierpien/kp-template-c
 
 `zod` jest zależnością **peer** — pakiet używa tej wersji, którą ma aplikacja,
 więc w jednym procesie nie ma dwóch kopii Zoda.
+
+## Warianty układu
+
+Ten sam produkt bywa potrzebny w kilku składach — zaproszenie z prośbą
+o potwierdzenie przybycia i bez niej. Zamiast liczyć na automatyczne dosuwanie
+tekstu, szablon trzyma **warianty**: każdy ma własny komplet stron, więc
+projektant panuje nad typografią w każdym z nich.
+
+```ts
+layout.variants = [
+  { id: 'v-full',  name: 'Z potwierdzeniem',   matchValue: 'tak', pages: [...] },
+  { id: 'v-short', name: 'Bez potwierdzenia',  matchValue: 'nie', pages: [...] },
+]
+layout.variantFieldKey = 'potwierdzenie' // pole formularza typu lista wyboru
+```
+
+Odczyt zawsze przez helpery, nie po polach wprost:
+
+| Funkcja | Do czego |
+|---|---|
+| `getTemplateVariants(layout)` | Lista wariantów; layout bez `variants` zwraca jeden zbudowany z `pages` |
+| `resolveTemplateVariant(layout, answers)` | Wariant wybrany odpowiedzią klienta (bez rozróżniania wielkości liter) |
+| `getTemplatePagesForAnswers(layout, answers)` | Strony do renderowania dla tych odpowiedzi |
+| `withTemplateVariants(layout, variants)` | Zapis wariantów; `pages`/`canvas`/`layers` zostają lustrem **pierwszego** wariantu |
+
+Lustro celowo nie śledzi wariantu otwartego w edytorze — konsument nieznający
+wariantów ma zawsze pokazywać układ podstawowy, a nie ten, który projektant
+akurat oglądał.
 
 ## Wydanie nowej wersji
 
