@@ -125,9 +125,18 @@ export interface PrintPlacement {
   rotation: PrintRotation;
 }
 
+/**
+ * `sheet` - wszystkie strony skladane na jednym arkuszu (przod i tyl tej samej
+ * karty). `separate` - kazda strona na wlasnym arkuszu, bo to osobne kartki
+ * (zaproszenie 90x135 + zwrotka 95x145).
+ */
+export type PrintMode = 'sheet' | 'separate';
+
 export interface PrintLayout {
   sheet: { widthMm: number; heightMm: number };
   placements: PrintPlacement[];
+  /** Brak = tryb wynika z wymiarow stron (patrz shouldPrintPagesSeparately). */
+  mode?: PrintMode;
 }
 
 // ============================================
@@ -210,6 +219,32 @@ export function resolveTemplateVariant(
   }
 
   return variants[0];
+}
+
+/**
+ * Czy strony maja jechac na osobne arkusze.
+ *
+ * Jawny `print.mode` wygrywa; bez niego decyduja wymiary. Skladanie na wspolny
+ * arkusz ma sens dla przodu i tylu tej samej karty - strony o roznych
+ * formatach to osobne kartki i zlozone razem daja wydruk nie do przyciecia.
+ */
+export function shouldPrintPagesSeparately(layout: TemplateLayoutJson | null | undefined): boolean {
+  if (!layout) return false;
+  if (layout.print?.mode) return layout.print.mode === 'separate';
+  return hasMixedPageSizes(layout);
+}
+
+/** Czy strony layoutu roznia sie wymiarami. */
+export function hasMixedPageSizes(layout: TemplateLayoutJson | null | undefined): boolean {
+  const pages = getTemplatePages(layout);
+  if (pages.length < 2) return false;
+
+  const first = { widthMm: getCanvasWidthMm(pages[0].canvas), heightMm: getCanvasHeightMm(pages[0].canvas) };
+  return pages.some((page) => {
+    const widthMm = getCanvasWidthMm(page.canvas);
+    const heightMm = getCanvasHeightMm(page.canvas);
+    return Math.abs(widthMm - first.widthMm) > 0.01 || Math.abs(heightMm - first.heightMm) > 0.01;
+  });
 }
 
 /** Strony wariantu wybranego odpowiedziami - to na nich pracuje renderer. */
@@ -528,6 +563,8 @@ export interface TextFieldProperties {
   maxLines: number;
   textTransform: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   editable: true;
+  /** Style fragmentow - patrz TextBoxProperties.styleRanges. */
+  styleRanges?: TextStyleRange[];
   // Client interaction settings
   clientDraggable?: boolean;  // Czy klient może przesuwać
   clientResizable?: boolean;  // Czy klient może zmieniać rozmiar
@@ -562,6 +599,32 @@ export interface StaticTextProperties {
  * TextBox - pole tekstowe z ramką (Frame Text).
  * Może być edytowalne lub statyczne.
  */
+/**
+ * Styl fragmentu tekstu - pogrubienie albo kursywa w srodku akapitu.
+ *
+ * Zakres liczymy na SUROWYM tekscie warstwy (indeksy znakow), a nie na
+ * zawinietych liniach jak robi to fabric. Zawijanie zmienia sie z szerokoscia
+ * ramki i z trescia, wiec styl przypiety do numeru linii rozjezdzalby sie przy
+ * kazdej poprawce. Konwersja na strukture fabrica idzie przez
+ * `buildFabricTextStyles`, zeby edytor, portal i wydruk liczyly ja tak samo.
+ */
+export interface TextStyleRange {
+  /** Indeks pierwszego znaku, od 0. */
+  start: number;
+  /** Indeks ZA ostatnim znakiem zakresu. */
+  end: number;
+  fontWeight?: number;
+  fontStyle?: 'normal' | 'italic';
+  underline?: boolean;
+  fill?: string;
+  fontFamily?: string;
+  /** Rozmiar w tej samej jednostce co warstwa (`fontUnit`). */
+  fontSize?: number;
+}
+
+/** Styl pojedynczego znaku - wynik zlozenia zakresow. */
+export type TextCharStyle = Omit<TextStyleRange, 'start' | 'end'>;
+
 export interface TextBoxProperties {
   type: 'textbox';
   fieldKey?: string;          // opcjonalny klucz powiązania z FormField.key
@@ -585,6 +648,15 @@ export interface TextBoxProperties {
   editable: boolean;          // czy edytowalne przez klienta
   /** Lamanie po znakach zamiast slowach (pismo CJK). */
   splitByGrapheme?: boolean;
+  /**
+   * Style fragmentow tekstu (pogrubienie, kursywa, kolor). Puste albo brak =
+   * caly tekst w stylu warstwy.
+   *
+   * Uwaga dla pol edytowalnych: zakresy dotycza tekstu z szablonu, wiec po
+   * podstawieniu odpowiedzi klienta trzeba je przeliczyc albo pominac -
+   * `resolveCharStyles` przycina je do dlugosci tekstu, nigdy nie wychodzi poza.
+   */
+  styleRanges?: TextStyleRange[];
   // Client interaction settings
   clientDraggable?: boolean;  // Czy klient może przesuwać
   clientResizable?: boolean;  // Czy klient może zmieniać rozmiar
@@ -612,6 +684,108 @@ export interface CutLineProperties {
   strokeWidth: number;
   strokeDashArray: number[];
   clientVisible: false;       // zawsze niewidoczne dla klienta
+}
+
+// ============================================
+// Style fragmentow tekstu
+// ============================================
+
+/**
+ * Styl kazdego znaku tekstu po zlozeniu zakresow.
+ *
+ * Zakresy moga na siebie nachodzic - wygrywa pozniejszy, bo tak dziala kazdy
+ * edytor tekstu (zaznaczasz fragment i nadajesz mu styl "na wierzchu").
+ * Indeksy poza tekstem sa przycinane, wiec krotsza odpowiedz klienta nie
+ * wywroci renderowania.
+ */
+export function resolveCharStyles(
+  text: string,
+  ranges: TextStyleRange[] | undefined | null
+): Array<TextCharStyle | undefined> {
+  const chars: Array<TextCharStyle | undefined> = new Array(text.length).fill(undefined);
+  if (!Array.isArray(ranges) || ranges.length === 0) return chars;
+
+  for (const range of ranges) {
+    const { start, end, ...style } = range;
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(text.length, Math.floor(end));
+    if (to <= from) continue;
+
+    const cleaned = Object.fromEntries(
+      Object.entries(style).filter(([, value]) => value !== undefined)
+    ) as TextCharStyle;
+    if (Object.keys(cleaned).length === 0) continue;
+
+    for (let index = from; index < to; index += 1) {
+      chars[index] = { ...(chars[index] || {}), ...cleaned };
+    }
+  }
+
+  return chars;
+}
+
+/**
+ * Struktura `styles` dla fabrica: { nrLinii: { nrZnaku: styl } }.
+ *
+ * `lines` to linie PO zawinieciu, w kolejnosci renderowania - dostarcza je
+ * konsument (fabric zna swoje zawijanie, my nie). Znaki konca linii wstawione
+ * przez zawijanie nie wystepuja w surowym tekscie, wiec licznik przesuwa sie
+ * tylko o dlugosc linii; twarde `\n` konsument ma podac jako osobne linie.
+ */
+export function buildFabricTextStyles(
+  lines: string[],
+  charStyles: Array<TextCharStyle | undefined>
+): Record<number, Record<number, TextCharStyle>> {
+  const styles: Record<number, Record<number, TextCharStyle>> = {};
+  let cursor = 0;
+
+  lines.forEach((line, lineIndex) => {
+    for (let charIndex = 0; charIndex < line.length; charIndex += 1) {
+      const style = charStyles[cursor + charIndex];
+      if (!style) continue;
+      styles[lineIndex] = styles[lineIndex] || {};
+      styles[lineIndex][charIndex] = style;
+    }
+    cursor += line.length;
+  });
+
+  return styles;
+}
+
+/**
+ * Zakresy uporzadkowane i sklejone - do zapisu w szablonie.
+ *
+ * Bez tego kazde klikniecie "pogrub" dokladalo nowy zakres i lista rosla w
+ * nieskonczonosc, mimo ze opisuje ten sam tekst.
+ */
+export function normalizeStyleRanges(
+  text: string,
+  ranges: TextStyleRange[] | undefined | null
+): TextStyleRange[] {
+  const chars = resolveCharStyles(text, ranges);
+  const result: TextStyleRange[] = [];
+
+  let index = 0;
+  while (index < chars.length) {
+    const style = chars[index];
+    if (!style) {
+      index += 1;
+      continue;
+    }
+
+    const serialized = JSON.stringify(style);
+    let end = index + 1;
+    while (end < chars.length && chars[end] && JSON.stringify(chars[end]) === serialized) {
+      end += 1;
+    }
+
+    result.push({ start: index, end, ...style });
+    index = end;
+  }
+
+  return result;
 }
 
 // ============================================
@@ -681,11 +855,65 @@ export interface TemplateLayoutWarning {
     | 'TEXT_LAYER_FIELD_KEY_MISSING'
     | 'TEXT_LAYER_FIELD_KEY_UNMAPPED'
     | 'TEXT_LAYER_FIELD_KEY_DUPLICATED'
-    | 'BACKGROUND_LAYER_MISSING';
+    | 'BACKGROUND_LAYER_MISSING'
+    | 'VARIANT_PAGE_MISSING'
+    | 'VARIANT_FIELD_KEY_UNMAPPED'
+    | 'VARIANT_MATCH_VALUE_MISSING';
   message: string;
   layerId?: string;
   layerName?: string;
   fieldKey?: string;
+  variantId?: string;
+  pageId?: string;
+}
+
+/**
+ * Spojnosc wariantow ze skladem do druku i mockupami.
+ *
+ * Sklad i mockupy wskazuja strony po `pageId` i sa wspolne dla calego szablonu,
+ * wiec wariant bez ktorejs strony po cichu wypadlby z wydruku albo ze zdjecia.
+ * Lepiej powiedziec to projektantowi w panelu niz odkryc na paczce do druku.
+ */
+export function validateTemplateVariants(
+  layout: TemplateLayoutJson | null | undefined,
+  formFieldKeys: string[] = []
+): TemplateLayoutWarning[] {
+  if (!layout || !Array.isArray(layout.variants) || layout.variants.length === 0) return [];
+
+  const warnings: TemplateLayoutWarning[] = [];
+  const basePageIds = getTemplatePages(layout).map((page) => page.id);
+
+  for (const variant of layout.variants) {
+    const variantPageIds = new Set(variant.pages.map((page) => page.id));
+
+    for (const pageId of basePageIds) {
+      if (variantPageIds.has(pageId)) continue;
+      warnings.push({
+        code: 'VARIANT_PAGE_MISSING',
+        message: `Wariant "${variant.name}" nie ma strony "${pageId}" - skład do druku i mockup ją pominą.`,
+        variantId: variant.id,
+        pageId,
+      });
+    }
+
+    if (layout.variantFieldKey && !variant.matchValue) {
+      warnings.push({
+        code: 'VARIANT_MATCH_VALUE_MISSING',
+        message: `Wariant "${variant.name}" nie ma wartości dopasowania - wybierze go tylko kolejność na liście.`,
+        variantId: variant.id,
+      });
+    }
+  }
+
+  if (layout.variantFieldKey && formFieldKeys.length > 0 && !formFieldKeys.includes(layout.variantFieldKey)) {
+    warnings.push({
+      code: 'VARIANT_FIELD_KEY_UNMAPPED',
+      message: `Pole "${layout.variantFieldKey}" wybierające wariant nie istnieje w formularzu.`,
+      fieldKey: layout.variantFieldKey,
+    });
+  }
+
+  return warnings;
 }
 
 export interface TemplateLayoutResponse {

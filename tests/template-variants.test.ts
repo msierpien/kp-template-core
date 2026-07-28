@@ -7,6 +7,7 @@ import {
   getTemplatePagesForAnswers,
   getTemplateVariants,
   resolveTemplateVariant,
+  validateTemplateVariants,
   withTemplateVariants,
   type TemplateLayoutJson,
   type TemplatePage,
@@ -102,4 +103,43 @@ test('layout bez wariantow renderuje sie ze stron mimo pola wariantu', () => {
     getTemplatePagesForAnswers(layout, { potwierdzenie: 'nie' }).map((page) => page.id),
     ['page-1']
   );
+});
+
+test('walidacja wskazuje strone, ktorej wariant nie ma', () => {
+  const layout = withTemplateVariants(makeLayout(), [
+    { id: 'v-full', name: 'Z potwierdzeniem', pages: [makePage('page-1'), makePage('page-2')] },
+    { id: 'v-short', name: 'Bez potwierdzenia', pages: [makePage('page-1')] },
+  ]);
+
+  const warnings = validateTemplateVariants(layout);
+  const missing = warnings.filter((warning) => warning.code === 'VARIANT_PAGE_MISSING');
+
+  assert.equal(missing.length, 1);
+  assert.equal(missing[0].variantId, 'v-short');
+  assert.equal(missing[0].pageId, 'page-2');
+});
+
+test('walidacja pilnuje pola wybierajacego wariant', () => {
+  const layout: TemplateLayoutJson = {
+    ...withTemplateVariants(makeLayout(), [
+      { id: 'v-full', name: 'Z potwierdzeniem', matchValue: 'tak', pages: [makePage('page-1')] },
+      { id: 'v-short', name: 'Bez potwierdzenia', pages: [makePage('page-1')] },
+    ]),
+    variantFieldKey: 'potwierdzenie',
+  };
+
+  const codes = validateTemplateVariants(layout, ['imie']).map((warning) => warning.code);
+
+  // Wariant bez matchValue nigdy nie zostanie wybrany odpowiedzia...
+  assert.ok(codes.includes('VARIANT_MATCH_VALUE_MISSING'));
+  // ...a samo pole nie istnieje w formularzu.
+  assert.ok(codes.includes('VARIANT_FIELD_KEY_UNMAPPED'));
+
+  // Z poprawnym kluczem pola to ostrzezenie znika.
+  const withField = validateTemplateVariants(layout, ['imie', 'potwierdzenie']).map((w) => w.code);
+  assert.ok(!withField.includes('VARIANT_FIELD_KEY_UNMAPPED'));
+});
+
+test('layout bez wariantow nie generuje ostrzezen', () => {
+  assert.deepEqual(validateTemplateVariants(makeLayout()), []);
 });

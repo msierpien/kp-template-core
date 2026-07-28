@@ -89,6 +89,38 @@ Lustro celowo nie śledzi wariantu otwartego w edytorze — konsument nieznając
 wariantów ma zawsze pokazywać układ podstawowy, a nie ten, który projektant
 akurat oglądał.
 
+Skład do druku i mockupy są **wspólne dla szablonu** i wskazują strony po
+`pageId`, więc warianty powinny mieć ten sam zestaw stron —
+`validateTemplateVariants(layout, kluczePól)` zwraca ostrzeżenia, gdy któraś
+strona wypada z wariantu albo pole wybierające wariant nie istnieje.
+
+## Style fragmentów tekstu
+
+Pogrubienie albo kursywa w środku akapitu opisane są zakresami **na surowym
+tekście warstwy**, nie na zawiniętych liniach:
+
+```ts
+properties.styleRanges = [{ start: 7, end: 13, fontWeight: 700 }]
+```
+
+Fabric trzyma style pod numerami linii po zawinięciu — a zawijanie zmienia się
+z szerokością ramki i treścią, więc styl przypięty do linii rozjeżdżałby się
+przy każdej poprawce. Konwersja idzie przez helpery, żeby edytor, portal
+i wydruk liczyły ją identycznie:
+
+| Funkcja | Do czego |
+|---|---|
+| `resolveCharStyles(text, ranges)` | Styl każdego znaku po złożeniu zakresów (późniejszy wygrywa, indeksy poza tekstem przycięte) |
+| `buildFabricTextStyles(lines, charStyles)` | Struktura `{ nrLinii: { nrZnaku: styl } }` dla fabrica — `lines` podaje konsument, bo tylko on zna swoje zawijanie |
+| `normalizeStyleRanges(text, ranges)` | Posprzątane zakresy do zapisu (sklejone sąsiednie o tym samym stylu) |
+
+## Tryb druku
+
+`print.mode` rozstrzyga, czy strony jadą na wspólny arkusz (`sheet` — przód
+i tył tej samej karty), czy każda na własny (`separate` — osobne kartki).
+Bez tego pola decydują wymiary: `shouldPrintPagesSeparately(layout)` zwraca
+`true`, gdy strony różnią się formatem.
+
 ## Wydanie nowej wersji
 
 1. Zmiana w `src/`, `npm test`.
