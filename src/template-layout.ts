@@ -442,7 +442,7 @@ export interface FontConfig {
 // Layers
 // ============================================
 
-export type LayerType = 'background' | 'image' | 'text' | 'static_text' | 'textbox' | 'shape' | 'cut_line';
+export type LayerType = 'background' | 'image' | 'text' | 'static_text' | 'textbox' | 'text_path' | 'shape' | 'cut_line';
 
 export interface LayerBase {
   id: string;
@@ -466,6 +466,7 @@ export type Layer =
   | TextFieldLayer
   | StaticTextLayer
   | TextBoxLayer
+  | TextPathLayer
   | ShapeLayer
   | CutLineLayer;
 
@@ -507,6 +508,23 @@ export interface StaticTextLayer extends LayerBase {
 export interface TextBoxLayer extends LayerBase {
   type: 'textbox';
   properties: TextBoxProperties;
+}
+
+/**
+ * Tekst prowadzony po krzywej (luk, okrag).
+ *
+ * `x`/`y` to srodek OKREGU, nie srodek napisu - tam projektant celuje
+ * promieniem i tam siedzi uchwyt w edytorze. Przelozenie na kotwice fabrica
+ * robi `getTextPathAnchorOffset`; policzenie tego na miejscu, w aplikacji,
+ * konczy sie warstwa skaczaca po zapisie.
+ *
+ * `width`/`height` z `LayerBase` opisuja zasieg samej krzywej
+ * (`getTextPathBBox`), a nie rozmiar tekstu - napis po luku nie ma ramki,
+ * w ktorej mialby sie zawijac. Warstwa jest jednoliniowa.
+ */
+export interface TextPathLayer extends LayerBase {
+  type: 'text_path';
+  properties: TextPathProperties;
 }
 
 export interface ShapeLayer extends LayerBase {
@@ -683,6 +701,79 @@ export interface TextBoxProperties {
   clientFontFamily?: boolean;
   clientColor?: boolean;
   clientTextAlign?: boolean;
+}
+
+/** Kształt prowadnicy tekstu po krzywej. `wave`/`custom` zarezerwowane. */
+export type TextPathShape = 'arc' | 'circle';
+
+/**
+ * Po ktorej stronie krzywej siedzi tekst: `left` nad linia, `right` pod nia.
+ * Nazwy z fabrica - to samo pole idzie prosto do obiektu, wiec nie tlumaczymy.
+ */
+export type TextPathSide = 'left' | 'right';
+
+/** Do czego przykladaja sie glify (pole fabrica `pathAlign`). */
+export type TextPathAlign = 'baseline' | 'center' | 'ascender' | 'descender';
+
+/** Gdzie na luku zaczyna sie napis. */
+export type TextPathTextAlign = 'start' | 'center' | 'end';
+
+/**
+ * Tekst po krzywej.
+ *
+ * Tresc bierze sie z pola formularza (`fieldKey`) albo jest stala (`text`) -
+ * tak samo jak w `textbox`. Geometria prowadnicy siedzi w polach ponizej,
+ * a jej przelozenie na `d`, dlugosc luku i offset startowy robia funkcje
+ * z `text-path.ts`. Zadna aplikacja nie liczy tego u siebie.
+ */
+export interface TextPathProperties {
+  type: 'text_path';
+  /** Pole formularza, z ktorego bierze sie tresc. Puste = tekst staly. */
+  fieldKey?: string;
+  /** Tresc stala, gdy warstwa nie jest powiazana z polem. */
+  text?: string;
+  /** Podpowiedz w edytorze, gdy pole jest jeszcze puste. */
+  placeholder?: string;
+
+  // --- prowadnica ---
+  pathShape: TextPathShape;
+  /** Promien w milimetrach - jednostka projektanta, nie piksele. */
+  radiusMm: number;
+  /** Kat poczatkowy w stopniach; 0 = godzina 3, rosnie zgodnie z zegarem. */
+  startAngle: number;
+  /** Rozpietosc luku w stopniach; ujemna odwraca kierunek. Okrag ignoruje. */
+  sweepAngle: number;
+  /** Strona krzywej: `left` = napis nad linia, `right` = pod nia. */
+  pathSide: TextPathSide;
+  /** Do czego przykladaja sie glify (pole fabrica `pathAlign`). */
+  pathAlign: TextPathAlign;
+  /** Gdzie na luku zaczyna sie napis. */
+  textPathAlign: TextPathTextAlign;
+  /**
+   * Ostatnio policzone `d`.
+   *
+   * Trzymamy je w layoucie, zeby renderer nie musial znac wzorow, a nie jako
+   * zrodlo prawdy: przy kazdej zmianie parametrow przeliczamy je z
+   * `buildTextPathD`. Przy odczycie starszego layoutu sluzy jako zapas.
+   */
+  pathD?: string;
+
+  // --- typografia (jak w pozostalych warstwach tekstowych) ---
+  fontSize: number;
+  fontUnit?: 'px' | 'pt';
+  fontFamily: string;
+  fontWeight: number;
+  fontStyle: 'normal' | 'italic';
+  fill: string;
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  /** Swiatlo miedzy literami w tysiecznych firetu - jak w `TextFieldProperties`. */
+  letterSpacing?: number;
+
+  // --- zgody klienta ---
+  clientFontSize?: boolean;
+  clientFontFamily?: boolean;
+  clientColor?: boolean;
+  clientFontWeight?: boolean;
 }
 
 export interface ShapeProperties {

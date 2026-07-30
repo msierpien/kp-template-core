@@ -1,6 +1,6 @@
 {
   "name": "@msierpien/kp-template-core",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Wspólny kontrakt formatu projektu (layoutJson) dla kp-api, kp-admin i kp-client",
   "license": "UNLICENSED",
   "repository": {

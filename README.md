@@ -123,6 +123,30 @@ każdej linii w surowym tekście zamiast sumować. Konwersja idzie przez helpery
 `50` = 0,05 em, wartości ujemne ściskają. Przy kaligrafii i wersalikach sam
 rozmiar pisma nie wystarcza, żeby napis oddychał.
 
+## Tekst po krzywej (`text_path`)
+
+Warstwa `text_path` prowadzi jednoliniowy napis po łuku albo okręgu. `x`/`y`
+to **środek okręgu**, nie środek napisu — tam projektant celuje promieniem.
+Przełożenie na kotwicę fabrica robi `getTextPathAnchorOffset`; policzenie tego
+na miejscu, w aplikacji, kończy się warstwą skaczącą po zapisie.
+
+| Funkcja | Do czego |
+|---|---|
+| `buildTextPathD(props, dpi)` | Atrybut `d` prowadnicy wokół (0,0). Okrąg i łuk > 180° składa z **dwóch** półłuków |
+| `getTextPathArcLength(props, dpi)` | Długość łuku w px, analitycznie (`|sweep| · r`) — ta liczba decyduje, czy napis się mieści |
+| `getTextPathBBox(props, dpi)` | Zasięg krzywej → `layer.width/height` (walidacja odrzuca zerowe wymiary) |
+| `getTextPathAnchorOffset(props, dpi)` | Wektor od środka okręgu do środka bboksu ścieżki. Górny półłuk: `dy = −r/2` |
+| `resolveTextPathStartOffset(align, arcLength, textWidth)` | `pathStartOffset` dla fabrica — start / środek / koniec łuku |
+| `isTextPathRadiusTooTight(radiusMm, fontSizePx, dpi)` | Czy przy tym promieniu glify nie będą się zlepiać |
+
+Jednostki: wejście w milimetrach (`radiusMm`), wyjście w pikselach przy dpi
+strony. **Skala podglądu nie należy do pakietu** — edytor mnoży wynik przez
+swoją skalę, renderer bierze go wprost. To jedyna dozwolona różnica między
+dwoma wywołaniami i najłatwiejsza pomyłka w całym mechanizmie.
+
+Wartości odniesienia w testach pochodzą z porównania z `fabric/node`:
+półokrąg r = 100 px ma długość 314 px, a jego bbox wysokość 100 px (nie 200).
+
 ## Tryb druku
 
 `print.mode` rozstrzyga, czy strony jadą na wspólny arkusz (`sheet` — przód
