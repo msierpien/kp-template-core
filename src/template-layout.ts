@@ -601,6 +601,13 @@ export interface TextFieldProperties {
   clientFontFamily?: boolean;
   clientColor?: boolean;
   clientTextAlign?: boolean;
+  /**
+   * Czy klient moze zmienic odstep miedzy wierszami.
+   *
+   * Osobno od `clientFontSize`, bo to inna decyzja projektanta: rozmiar pisma
+   * bywa bezpieczny, a rozjechany interlinia potrafi wypchnac tekst poza ramke.
+   */
+  clientLineHeight?: boolean;
 }
 
 /**
@@ -701,6 +708,13 @@ export interface TextBoxProperties {
   clientFontFamily?: boolean;
   clientColor?: boolean;
   clientTextAlign?: boolean;
+  /**
+   * Czy klient moze zmienic odstep miedzy wierszami.
+   *
+   * Osobno od `clientFontSize`, bo to inna decyzja projektanta: rozmiar pisma
+   * bywa bezpieczny, a rozjechany interlinia potrafi wypchnac tekst poza ramke.
+   */
+  clientLineHeight?: boolean;
 }
 
 /** Kształt prowadnicy tekstu po krzywej. `wave`/`custom` zarezerwowane. */

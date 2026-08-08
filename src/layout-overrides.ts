@@ -62,6 +62,7 @@ const clientFlags = {
   clientColor: z.boolean().optional(),
   clientTextAlign: z.boolean().optional(),
   clientFontWeight: z.boolean().optional(),
+  clientLineHeight: z.boolean().optional(),
 };
 
 const textPropertiesSchema = z.object({
@@ -137,6 +138,9 @@ const layerOverrideSchema = z.object({
   fill: color.optional(),
   textAlign: textAlign.optional(),
   fontWeight: z.number().finite().min(1).max(1000).optional(),
+  // Ten sam zakres co w `textPropertiesSchema` - odstep to mnoznik wysokosci
+  // wiersza, nie milimetry.
+  lineHeight: z.number().finite().min(0.1).max(10).optional(),
   text: z.string().max(MAX_ADDED_LAYER_TEXT).optional(),
   tint: color.optional(),
   /** Pole wylacznie kliencie - renderer czyta gotowy `fontSize`. */
