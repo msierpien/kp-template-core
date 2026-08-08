@@ -91,10 +91,11 @@ function drawTexturedTriangle(
   ctx: any,
   image: any,
   src: [Point, Point, Point],
-  dst: [Point, Point, Point]
+  dst: [Point, Point, Point],
+  expandBy: number
 ): void {
   const [s0, s1, s2] = src;
-  const [d0, d1, d2] = expandTriangle(dst[0], dst[1], dst[2], 0.6);
+  const [d0, d1, d2] = expandTriangle(dst[0], dst[1], dst[2], expandBy);
 
   const denom = s0.x * (s2.y - s1.y) - s1.x * s2.y + s2.x * s1.y + (s1.x - s2.x) * s0.y;
   if (Math.abs(denom) < 1e-9) return;
@@ -136,30 +137,27 @@ export interface DrawImageInQuadOptions {
 }
 
 /**
- * Rysuje `image` w czworokacie `quad` z korekcja perspektywy.
+ * O ile rozsuwac trojkaty siatki, zeby nie bylo miedzy nimi wlosowych szpar.
  *
- * Obraz jest dzielony na siatke; kazda komorka trafia w miejsce wyliczone
- * homografia i jest rysowana jako dwa trojkaty (afinicznie). Przy 12+ podzialach
- * roznica wzgledem prawdziwego rzutowania jest ponizej piksela.
+ * Na plotnie pomocniczym rozsuwamy o caly piksel: wygladzone krawedzie
+ * sasiadow w pelni sie przykrywaja i szew wychodzi kryjacy. Rysujac wprost na
+ * zdjeciu (tryb `normal` albo brak plotna) zostajemy przy ulamku piksela -
+ * tam kazde zachodzenie widac jako podwojnie rysowany slad.
  */
-export function drawImageInQuad(
+const SEAM_OVERLAP_ISOLATED_PX = 1;
+const SEAM_OVERLAP_DIRECT_PX = 0.6;
+
+/** Sama siatka - bez trybu mieszania, wprost na podanym kontekscie. */
+function drawMesh(
   ctx: any,
   image: { width: number; height: number },
   quad: Quad,
-  options: DrawImageInQuadOptions = {}
+  subdivisions: number,
+  expandBy: number
 ): void {
-  const subdivisions = Math.max(1, Math.round(options.subdivisions ?? 16));
   const map = squareToQuad(quad);
   const sw = image.width;
   const sh = image.height;
-
-  ctx.save();
-  if (options.blendMode && options.blendMode !== 'normal') {
-    ctx.globalCompositeOperation = options.blendMode;
-  }
-  if (options.opacity !== undefined && options.opacity < 1) {
-    ctx.globalAlpha = Math.max(0, options.opacity);
-  }
 
   for (let row = 0; row < subdivisions; row++) {
     for (let col = 0; col < subdivisions; col++) {
@@ -176,11 +174,108 @@ export function drawImageInQuad(
       ];
       const dst: Quad = [map(u0, v0), map(u1, v0), map(u1, v1), map(u0, v1)];
 
-      drawTexturedTriangle(ctx, image, [src[0], src[1], src[2]], [dst[0], dst[1], dst[2]]);
-      drawTexturedTriangle(ctx, image, [src[0], src[2], src[3]], [dst[0], dst[2], dst[3]]);
+      drawTexturedTriangle(ctx, image, [src[0], src[1], src[2]], [dst[0], dst[1], dst[2]], expandBy);
+      drawTexturedTriangle(ctx, image, [src[0], src[2], src[3]], [dst[0], dst[2], dst[3]], expandBy);
+    }
+  }
+}
+
+/** Prostokat obejmujacy czworokat, z zapasem na rozsuniete trojkaty. */
+function quadBounds(quad: Quad, padding: number) {
+  const xs = quad.map((point) => point.x);
+  const ys = quad.map((point) => point.y);
+  const x = Math.floor(Math.min(...xs)) - padding;
+  const y = Math.floor(Math.min(...ys)) - padding;
+  const width = Math.ceil(Math.max(...xs)) + padding - x;
+  const height = Math.ceil(Math.max(...ys)) + padding - y;
+  return { x, y, width, height };
+}
+
+/**
+ * Plotno pomocnicze na warp - jedna kopia dla trzech srodowisk.
+ *
+ * Pakiet nie zna swojego hosta, wiec probujemy po kolei: OffscreenCanvas
+ * (przegladarka i workery), `document.createElement` (starsze przegladarki),
+ * na koncu konstruktor plotna, na ktorym rysujemy (node-canvas przyjmuje
+ * `new Canvas(width, height)`). `null` = brak plotna, wracamy do rysowania
+ * wprost na kontekscie.
+ */
+function createScratchSurface(ctx: any, width: number, height: number): any | null {
+  if (!(width > 0) || !(height > 0)) return null;
+
+  // Przez `globalThis`, bo pakiet kompiluje sie bez biblioteki typow DOM -
+  // ma sie budowac tak samo dla serwera, jak dla przegladarki.
+  const globalScope = globalThis as any;
+
+  try {
+    if (typeof globalScope.OffscreenCanvas === 'function') {
+      return new globalScope.OffscreenCanvas(width, height);
+    }
+    const documentRef = globalScope.document;
+    if (documentRef && typeof documentRef.createElement === 'function') {
+      const canvas = documentRef.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      return canvas;
+    }
+    const CanvasFactory = ctx?.canvas?.constructor;
+    if (typeof CanvasFactory === 'function') {
+      return new CanvasFactory(width, height);
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Rysuje `image` w czworokacie `quad` z korekcja perspektywy.
+ *
+ * Obraz jest dzielony na siatke; kazda komorka trafia w miejsce wyliczone
+ * homografia i jest rysowana jako dwa trojkaty (afinicznie). Przy 12+ podzialach
+ * roznica wzgledem prawdziwego rzutowania jest ponizej piksela.
+ *
+ * Przy trybie mieszania (albo kryciu ponizej 1) siatka trafia najpierw na
+ * plotno pomocnicze i dopiero gotowa warstwa laduje na zdjeciu JEDNYM
+ * `drawImage`. Trojkaty siatki celowo zachodza na siebie o ulamek piksela
+ * (patrz `expandTriangle`) - mieszane pojedynczo, kazde zachodzenie liczylo
+ * sie dwa razy i na projekcie pojawiala sie siatka ciemniejszych kresek.
+ * Na bieli `multiply` nic nie zmienia, wiec artefakt bylo widac wylacznie na
+ * ilustracji, nie na tle karty.
+ */
+export function drawImageInQuad(
+  ctx: any,
+  image: { width: number; height: number },
+  quad: Quad,
+  options: DrawImageInQuadOptions = {}
+): void {
+  const subdivisions = Math.max(1, Math.round(options.subdivisions ?? 16));
+  const blendMode = options.blendMode && options.blendMode !== 'normal' ? options.blendMode : null;
+  const opacity = options.opacity === undefined ? 1 : Math.max(0, Math.min(1, options.opacity));
+
+  if (blendMode || opacity < 1) {
+    const bounds = quadBounds(quad, 2);
+    const surface = createScratchSurface(ctx, bounds.width, bounds.height);
+    const surfaceCtx = surface?.getContext('2d');
+
+    if (surfaceCtx) {
+      surfaceCtx.translate(-bounds.x, -bounds.y);
+      drawMesh(surfaceCtx, image, quad, subdivisions, SEAM_OVERLAP_ISOLATED_PX);
+
+      ctx.save();
+      if (blendMode) ctx.globalCompositeOperation = blendMode;
+      if (opacity < 1) ctx.globalAlpha = opacity;
+      ctx.drawImage(surface, bounds.x, bounds.y);
+      ctx.restore();
+      return;
     }
   }
 
+  ctx.save();
+  if (blendMode) ctx.globalCompositeOperation = blendMode;
+  if (opacity < 1) ctx.globalAlpha = opacity;
+  drawMesh(ctx, image, quad, subdivisions, SEAM_OVERLAP_DIRECT_PX);
   ctx.restore();
 }
 
