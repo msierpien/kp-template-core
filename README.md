@@ -15,6 +15,8 @@ pakietu, więc kompilator w trzech repozytoriach pokazuje, co wymaga uwagi.
 | `template-layout` | Format projektu (`layoutJson`): strony, warianty układu, warstwy i ich właściwości, skład do druku, mockupy, formaty i przeliczniki mm ↔ px |
 | `layout-overrides` | Schemat Zod zmian wprowadzanych przez klienta w portalu + `parseLayoutOverrides` (to on decyduje, co API przyjmie do bazy) |
 | `mockup-warp` | Geometria nakładania projektu na zdjęcie produktu — ten sam kod liczy podgląd w przeglądarce i render do druku |
+| `text-path` | Geometria napisu prowadzonego po łuku: `d` prowadnicy, długość łuku, offset startowy i kotwica |
+| `shape` | Geometria figur (kreska, ramka, koło, elipsa): przeliczenia mm → px, końce odcinka, kreskowanie liczone z grubości obrysu |
 
 ## Instalacja w aplikacji
 

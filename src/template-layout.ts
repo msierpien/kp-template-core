@@ -790,14 +790,39 @@ export interface TextPathProperties {
   clientFontWeight?: boolean;
 }
 
+/**
+ * Figura rysowana wprost przez renderer: kreska, ramka, kolo, elipsa.
+ *
+ * Arytmetyka (przeliczenia mm, konce odcinka, kreskowanie) siedzi w module
+ * `shape` i nigdzie indziej - tak samo jak przy `text_path`. Kazde z trzech
+ * miejsc rysujacych (edytor, portal, renderer druku) wola te same funkcje.
+ *
+ * Pola `*Mm` sa opcjonalne i maja pierwszenstwo przed odpowiednikami w
+ * pikselach. Piksele zostaja dla szablonow zapisanych przed ich wprowadzeniem.
+ */
 export interface ShapeProperties {
   type: 'shape';
-  shapeType: 'rectangle' | 'circle' | 'ellipse' | 'line';
+  shapeType: ShapeType;
+  /** Pusty string, 'transparent' i 'none' znacza brak wypelnienia. */
   fill: string;
   stroke: string;
+  /** Grubosc obrysu w pikselach strony - uzywana, gdy brak `strokeWidthMm`. */
   strokeWidth: number;
+  /** Grubosc obrysu w milimetrach - w mm mysli projektant, bo w nich drukuje. */
+  strokeWidthMm?: number;
+  /** Zaokraglenie rogow prostokata w pikselach strony. */
   borderRadius: number;
+  /** Zaokraglenie rogow prostokata w milimetrach. */
+  borderRadiusMm?: number;
+  /**
+   * Kreska i przerwa w pikselach strony, jak w `CutLineProperties`. Pusta
+   * tablica albo brak pola = linia ciagla. Wartosci liczy `buildDashArray`
+   * z grubosci obrysu, zeby wzor wygladal tak samo przy kazdej grubosci.
+   */
+  strokeDashArray?: number[];
 }
+
+export type ShapeType = 'rectangle' | 'circle' | 'ellipse' | 'line';
 
 export interface CutLineProperties {
   type: 'cut_line';
