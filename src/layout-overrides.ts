@@ -153,6 +153,12 @@ const layersMapSchema = z.record(z.string().max(120), layerOverrideSchema).refin
 );
 
 export const layoutOverridesSchema = z.object({
+  /**
+   * Kolor wiodacy wybrany przez klienta - jedno pokretlo na caly motyw
+   * (tekst i podklad wektorowy), zamiast przemalowywania warstwy po warstwie.
+   * Wygrywa z `primaryColor` szablonu.
+   */
+  primaryColor: z.string().regex(/^#[0-9a-fA-F]{3,8}$/).optional(),
   layers: layersMapSchema.optional(),
   items: z
     .record(

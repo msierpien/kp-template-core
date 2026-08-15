@@ -52,6 +52,17 @@ export interface TemplateLayoutJson {
    * klient dostaje swobodny wybornik.
    */
   palette?: string[];
+  /**
+   * Kolor wiodacy projektu (hex).
+   *
+   * Jedno pokretlo na caly motyw: warstwy z `fill: 'currentColor'` i podklad
+   * arkusza w SVG biora kolor stad. Dzieki temu zmiana barwy zaproszenia to
+   * jedna wartosc, a nie obchodzenie kazdej warstwy z osobna - i klient moze
+   * ja przestawic, nie rozjezdzajac skladu.
+   *
+   * Brak = warstwy zostaja przy swoich wlasnych kolorach.
+   */
+  primaryColor?: string;
 }
 
 // ============================================
@@ -244,6 +255,58 @@ export interface SheetImposition {
 }
 
 export const A4_SHEET_MM = { widthMm: 210, heightMm: 297 };
+
+// ============================================
+// Kolor wiodacy projektu
+// ============================================
+
+/**
+ * Wartosc, ktora w warstwie znaczy "wez kolor wiodacy projektu".
+ *
+ * Ta sama nazwa co w SVG i nie przypadkiem: podklad wektorowy przebarwia sie
+ * podmiana `currentColor`, wiec warstwy uzywaja tego samego slowa i caly
+ * motyw ma jedno pojecie koloru.
+ */
+export const CURRENT_COLOR = 'currentColor';
+
+/** Czy wartosc koloru odsyla do koloru wiodacego zamiast podawac wlasny. */
+export function isCurrentColor(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().toLowerCase() === 'currentcolor';
+}
+
+/** Poprawny zapis hex - tylko taki podstawiamy pod `currentColor`. */
+function isHexColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value.trim());
+}
+
+/**
+ * Kolor wiodacy dla renderu: wybor klienta wygrywa z ustawieniem szablonu.
+ *
+ * Zwraca `null`, gdy nie ma poprawnego koloru - wolajacy zostawia wtedy
+ * warstwy przy ich wlasnych barwach, zamiast malowac projekt czernia
+ * z przypadku.
+ */
+export function resolvePrimaryColor(
+  layout: TemplateLayoutJson | null | undefined,
+  overrides?: { primaryColor?: unknown } | null
+): string | null {
+  const fromClient = overrides?.primaryColor;
+  if (isHexColor(fromClient)) return fromClient.trim();
+  if (isHexColor(layout?.primaryColor)) return layout!.primaryColor!.trim();
+  return null;
+}
+
+/**
+ * Podstawia kolor wiodacy pod `currentColor`.
+ *
+ * Brak koloru wiodacego zostawia wartosc bez zmian - `currentColor` dojdzie
+ * wtedy do renderera, ktory potraktuje ja jak nieznana barwe i uzyje swojego
+ * domyslu. To lepsze niz ciche zaczernienie projektu.
+ */
+export function applyPrimaryColor(value: string | undefined, primaryColor: string | null): string | undefined {
+  if (!primaryColor || !isCurrentColor(value)) return value;
+  return primaryColor;
+}
 
 /**
  * Sklad arkuszowy szablonu albo `null`.
