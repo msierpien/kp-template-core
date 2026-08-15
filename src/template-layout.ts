@@ -226,6 +226,15 @@ export interface SheetImposition {
   /** Drukowany podklad pod uzytkami (ozdobna ramka). URL assetu szablonu. */
   backgroundUrl?: string;
   /**
+   * Podklad per strona - klucz to `pageId`.
+   *
+   * Kazda strona projektu jedzie na WLASNY arkusz, a te arkusze nie musza
+   * wygladac tak samo: przod zaproszenia laduje na wydrukowanej wstazce,
+   * a tyl na czystej kartce. Pusty string = ten arkusz jest bez podkladu,
+   * mimo `backgroundUrl` ustawionego globalnie.
+   */
+  pageBackgrounds?: Record<string, string>;
+  /**
    * Kalibracja po probnym wydruku: przesuwa WSZYSTKIE uzytki naraz.
    * Paserow nie rusza, bo to one sa ukladem odniesienia plotera - przesuniecie
    * ich razem z grafika nie naprawiloby niczego.
@@ -250,6 +259,22 @@ export function getSheetImposition(
   if (!imposition || imposition.enabled !== true) return null;
   if (!Array.isArray(imposition.slots) || imposition.slots.length === 0) return null;
   return imposition;
+}
+
+/**
+ * Podklad arkusza dla wskazanej strony.
+ *
+ * Wpis w `pageBackgrounds` wygrywa z globalnym `backgroundUrl`, a wpis pusty
+ * oznacza swiadome "ten arkusz ma byc czysty" - inaczej nie dalo by sie
+ * zdjac podkladu z jednej strony, gdy pozostale go maja.
+ */
+export function getSheetBackgroundUrl(
+  imposition: SheetImposition,
+  pageId?: string
+): string | null {
+  const perPage = pageId ? imposition.pageBackgrounds?.[pageId] : undefined;
+  if (perPage !== undefined) return perPage.trim() ? perPage : null;
+  return imposition.backgroundUrl?.trim() ? imposition.backgroundUrl : null;
 }
 
 /** Pozycja gniazda po doliczeniu kalibracji arkusza. */

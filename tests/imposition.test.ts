@@ -6,6 +6,7 @@ import {
   SILHOUETTE_MARKS_DEFAULT,
   defaultImpositionSlots,
   getMarksSafeArea,
+  getSheetBackgroundUrl,
   getSheetImposition,
   getSlotPositionMm,
   validateSheetImposition,
@@ -208,4 +209,31 @@ test('automatyczne rozmieszczenie miesci sie w strefie bezpiecznej', () => {
 
   assert.equal(slots.length, 2);
   assert.deepEqual(validateSheetImposition(layout), []);
+});
+
+test('podklad per strona: przod na wstazce, tyl na czystej kartce', () => {
+  const imposition = makeSheet({
+    backgroundUrl: 'templates/KOD/sheet/wstazka.png',
+    // Pusty wpis to swiadome "ten arkusz ma byc czysty", nie brak konfiguracji.
+    pageBackgrounds: { 'page-2': '' },
+  });
+
+  assert.equal(getSheetBackgroundUrl(imposition, 'page-1'), 'templates/KOD/sheet/wstazka.png');
+  assert.equal(getSheetBackgroundUrl(imposition, 'page-2'), null);
+  // Brak wskazania strony spada na podklad globalny.
+  assert.equal(getSheetBackgroundUrl(imposition, undefined), 'templates/KOD/sheet/wstazka.png');
+});
+
+test('podklad per strona moze tez podmieniac grafike, nie tylko ja zdejmowac', () => {
+  const imposition = makeSheet({
+    backgroundUrl: 'a.png',
+    pageBackgrounds: { 'page-2': 'b.png' },
+  });
+
+  assert.equal(getSheetBackgroundUrl(imposition, 'page-1'), 'a.png');
+  assert.equal(getSheetBackgroundUrl(imposition, 'page-2'), 'b.png');
+});
+
+test('bez zadnego podkladu arkusz zostaje bialy', () => {
+  assert.equal(getSheetBackgroundUrl(makeSheet(), 'page-1'), null);
 });
