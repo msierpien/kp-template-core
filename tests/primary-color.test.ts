@@ -6,6 +6,7 @@ import {
   applyPrimaryColor,
   isCurrentColor,
   resolvePrimaryColor,
+  withResolvedPrimaryColor,
   type TemplateLayoutJson,
 } from '../src/template-layout';
 import { layoutOverridesSchema } from '../src/layout-overrides';
@@ -53,5 +54,60 @@ describe('kolor wiodacy projektu', () => {
     assert.equal(layoutOverridesSchema.safeParse({ primaryColor: '#7f1d1d' }).success, true);
     assert.equal(layoutOverridesSchema.safeParse({ primaryColor: 'javascript:alert(1)' }).success, false);
     assert.equal(layoutOverridesSchema.safeParse({}).success, true);
+  });
+});
+
+describe('rozwiazywanie koloru w calym layoucie', () => {
+  const page = (id: string, fill: string) => ({
+    id,
+    name: id,
+    canvas: { width: 100, height: 100, unit: 'mm' as const, dpi: 300, bleed: 0, safeArea: 0, backgroundColor: '#fff' },
+    layers: [{ id: `l-${id}`, name: id, type: 'textbox', visible: true, locked: false, opacity: 1, zIndex: 0,
+      x: 0, y: 0, width: 10, height: 10, rotation: 0, properties: { type: 'textbox', fill } }],
+  });
+
+  test('podstawia kolor w warstwach wszystkich stron i wariantow', () => {
+    const layout = {
+      version: 2,
+      canvas: page('page-1', CURRENT_COLOR).canvas,
+      fonts: [],
+      layers: page('page-1', CURRENT_COLOR).layers,
+      pages: [page('page-1', CURRENT_COLOR), page('page-2', '#123456')],
+      variants: [{ id: 'v1', name: 'v1', pages: [page('page-1', CURRENT_COLOR)] }],
+      primaryColor: '#7f1d1d',
+    } as unknown as TemplateLayoutJson;
+
+    const out: any = withResolvedPrimaryColor(layout);
+    assert.equal(out.pages[0].layers[0].properties.fill, '#7f1d1d');
+    // Warstwa z wlasnym kolorem zostaje nietknieta.
+    assert.equal(out.pages[1].layers[0].properties.fill, '#123456');
+    assert.equal(out.variants[0].pages[0].layers[0].properties.fill, '#7f1d1d');
+    assert.equal(out.layers[0].properties.fill, '#7f1d1d');
+  });
+
+  test('wybor klienta wygrywa takze tutaj', () => {
+    const layout = {
+      version: 2, canvas: page('page-1', CURRENT_COLOR).canvas, fonts: [],
+      layers: page('page-1', CURRENT_COLOR).layers, pages: [page('page-1', CURRENT_COLOR)],
+      primaryColor: '#2f3437',
+    } as unknown as TemplateLayoutJson;
+
+    const out: any = withResolvedPrimaryColor(layout, { primaryColor: '#1e3a5f' });
+    assert.equal(out.pages[0].layers[0].properties.fill, '#1e3a5f');
+  });
+
+  test('bez czego podmieniac oddaje TEN SAM obiekt', () => {
+    // Podglad w przegladarce przerysowuje sie przy kazdej zmianie - nowa
+    // referencja co klatke kasowalaby memoizacje.
+    const layout = {
+      version: 2, canvas: page('page-1', '#123456').canvas, fonts: [],
+      layers: page('page-1', '#123456').layers, pages: [page('page-1', '#123456')],
+      primaryColor: '#7f1d1d',
+    } as unknown as TemplateLayoutJson;
+
+    assert.equal(withResolvedPrimaryColor(layout), layout);
+    // Brak koloru wiodacego tez nie tworzy kopii.
+    const bez = { ...layout, primaryColor: undefined } as TemplateLayoutJson;
+    assert.equal(withResolvedPrimaryColor(bez), bez);
   });
 });

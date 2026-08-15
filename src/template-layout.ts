@@ -309,6 +309,54 @@ export function applyPrimaryColor(value: string | undefined, primaryColor: strin
 }
 
 /**
+ * Layout z `currentColor` juz podstawionym w warstwach - do renderu.
+ *
+ * Konsumenci rysujacy projekt (fabric na serwerze, canvas w przegladarce,
+ * mockup) dostaja warstwy, nie caly layout, i nie maja jak samodzielnie
+ * dojsc do koloru wiodacego. Zamiast uczyc kazdego z nich tej sciezki,
+ * rozwiazujemy kolor RAZ, tu, i przekazujemy dalej gotowy layout.
+ *
+ * Zwraca ten sam obiekt, gdy nie ma czego podmieniac - podglad w przegladarce
+ * przerysowuje sie przy kazdej zmianie i nowa referencja co klatke kasowalaby
+ * memoizacje.
+ */
+export function withResolvedPrimaryColor<T extends TemplateLayoutJson>(
+  layout: T,
+  overrides?: { primaryColor?: unknown } | null
+): T {
+  const primaryColor = resolvePrimaryColor(layout, overrides);
+  if (!primaryColor) return layout;
+
+  let touched = false;
+  const resolveLayers = (layers: Layer[] | undefined): Layer[] | undefined => {
+    if (!Array.isArray(layers)) return layers;
+    return layers.map((layer) => {
+      const props = layer?.properties as unknown as Record<string, unknown> | undefined;
+      if (!props) return layer;
+      const fill = applyPrimaryColor(props.fill as string | undefined, primaryColor);
+      const stroke = applyPrimaryColor(props.stroke as string | undefined, primaryColor);
+      if (fill === props.fill && stroke === props.stroke) return layer;
+      touched = true;
+      return { ...layer, properties: { ...props, fill, stroke } } as Layer;
+    });
+  };
+
+  const layers = resolveLayers(layout.layers);
+  const pages = Array.isArray(layout.pages)
+    ? layout.pages.map((page) => ({ ...page, layers: resolveLayers(page.layers) as Layer[] }))
+    : layout.pages;
+  const variants = Array.isArray(layout.variants)
+    ? layout.variants.map((variant) => ({
+        ...variant,
+        pages: variant.pages.map((page) => ({ ...page, layers: resolveLayers(page.layers) as Layer[] })),
+      }))
+    : layout.variants;
+
+  if (!touched) return layout;
+  return { ...layout, layers, ...(pages ? { pages } : {}), ...(variants ? { variants } : {}) } as T;
+}
+
+/**
  * Sklad arkuszowy szablonu albo `null`.
  *
  * Konsumenci nie czytaja `layout.imposition` wprost - wylaczony sklad ma
