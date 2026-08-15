@@ -96,6 +96,29 @@ describe('rozwiazywanie koloru w calym layoucie', () => {
     assert.equal(out.pages[0].layers[0].properties.fill, '#1e3a5f');
   });
 
+  test('ozdobnik na currentColor idzie za kolorem wiodacym', () => {
+    // Grafika wektorowa trzyma kolor w `tint`, nie w `fill` - bez tego
+    // jedno pokretlo malowaloby tekst, a ozdobnik zostawal czarny.
+    const image = (tint?: string) => ({
+      id: 'img', name: 'Ozdobnik', type: 'image', visible: true, locked: false, opacity: 1,
+      zIndex: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
+      properties: { type: 'image', imageUrl: 'decorations/t/kokardka.svg', fit: 'contain', ...(tint ? { tint } : {}) },
+    });
+
+    const layout = {
+      version: 2, canvas: page('page-1', '#123456').canvas, fonts: [],
+      layers: [image(CURRENT_COLOR), image('#123456'), image()],
+      primaryColor: '#8a1538',
+    } as unknown as TemplateLayoutJson;
+
+    const out: any = withResolvedPrimaryColor(layout);
+    assert.equal(out.layers[0].properties.tint, '#8a1538');
+    // Wlasny kolor ozdobnika i brak koloru zostaja nietkniete.
+    assert.equal(out.layers[1].properties.tint, '#123456');
+    assert.equal(out.layers[2].properties.tint, undefined);
+    assert.equal(out.layers[2], layout.layers![2]);
+  });
+
   test('bez czego podmieniac oddaje TEN SAM obiekt', () => {
     // Podglad w przegladarce przerysowuje sie przy kazdej zmianie - nowa
     // referencja co klatke kasowalaby memoizacje.

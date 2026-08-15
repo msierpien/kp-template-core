@@ -237,6 +237,15 @@ export interface SheetImposition {
   /** Drukowany podklad pod uzytkami (ozdobna ramka). URL assetu szablonu. */
   backgroundUrl?: string;
   /**
+   * Plik ze sciezkami ciecia (SVG) do zaimportowania w Silhouette Studio.
+   *
+   * Kontur wycinanego ksztaltu zyje w GRAFICE, nie w danych szablonu - owalu
+   * z falowana krawedzia nie da sie odtworzyc z prostokata uzytku. Powstaje
+   * przy wgrywaniu podkladu, z tych samych sciezek noza, ktore z niego
+   * zdejmujemy - wiec wydruk i ciecie nie moga sie rozjechac.
+   */
+  cutFileUrl?: string;
+  /**
    * Podklad per strona - klucz to `pageId`.
    *
    * Kazda strona projektu jedzie na WLASNY arkusz, a te arkusze nie musza
@@ -348,9 +357,16 @@ export function withResolvedPrimaryColor<T extends TemplateLayoutJson>(
       if (!props) return layer;
       const fill = applyPrimaryColor(props.fill as string | undefined, primaryColor);
       const stroke = applyPrimaryColor(props.stroke as string | undefined, primaryColor);
-      if (fill === props.fill && stroke === props.stroke) return layer;
+      // `tint` to kolor grafiki wektorowej (ozdobnik z biblioteki). Bez niego
+      // jedno pokretlo malowaloby tekst i figury, a ozdobnik zostawalby przy
+      // swojej barwie - czyli dokladnie ten rozjazd, ktory kolor wiodacy
+      // mial zlikwidowac.
+      const tint = applyPrimaryColor(props.tint as string | undefined, primaryColor);
+      if (fill === props.fill && stroke === props.stroke && tint === props.tint) return layer;
       touched = true;
-      return { ...layer, properties: { ...props, fill, stroke } } as Layer;
+      // Przez `unknown`: `properties` jest tu workowatym Record-em, a `Layer`
+      // to unia, w ktorej nie kazdy wariant zna wszystkie trzy kolory.
+      return { ...layer, properties: { ...props, fill, stroke, tint } } as unknown as Layer;
     });
   };
 
@@ -894,7 +910,12 @@ export interface ImageProperties {
   clientDraggable?: boolean;
   clientResizable?: boolean;
   clientRotatable?: boolean;
-  /** Kolor podstawiany pod `currentColor` w SVG (ozdobnik z palety projektu). */
+  /**
+   * Kolor podstawiany pod `currentColor` w SVG (ozdobnik z palety projektu).
+   *
+   * Sam moze byc `currentColor` - wtedy ozdobnik idzie za kolorem wiodacym
+   * projektu, tak jak wypelnienie tekstu i obrys figury.
+   */
   tint?: string;
   /** Czy skalowanie ma trzymac proporcje zrodla. */
   lockAspectRatio?: boolean;
