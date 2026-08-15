@@ -237,3 +237,21 @@ test('podklad per strona moze tez podmieniac grafike, nie tylko ja zdejmowac', (
 test('bez zadnego podkladu arkusz zostaje bialy', () => {
   assert.equal(getSheetBackgroundUrl(makeSheet(), 'page-1'), null);
 });
+
+test('dwie kalibracje sa niezalezne: uzytki wzgledem paserow, arkusz wzgledem papieru', () => {
+  const imposition = makeSheet({
+    slotOffsetXMm: 1.5,
+    slotOffsetYMm: -0.5,
+    sheetOffsetXMm: -3,
+    sheetOffsetYMm: -3,
+  });
+
+  // Pozycja gniazda liczy TYLKO kalibracje uzytkow. Offset arkusza doklada
+  // renderer do calego rysunku (razem z paserami), wiec nie moze wchodzic
+  // w rachunek gniazda - inaczej policzylby sie dwa razy.
+  assert.deepEqual(getSlotPositionMm(imposition.slots[0], imposition), { xMm: 19.5, yMm: 17.5 });
+
+  // Walidacja tez patrzy na uzytki wzgledem arkusza, nie wzgledem papieru.
+  const layout = makeLayout([makePage('page-1', 90, 130)], imposition);
+  assert.deepEqual(validateSheetImposition(layout), []);
+});

@@ -246,12 +246,25 @@ export interface SheetImposition {
    */
   pageBackgrounds?: Record<string, string>;
   /**
-   * Kalibracja po probnym wydruku: przesuwa WSZYSTKIE uzytki naraz.
-   * Paserow nie rusza, bo to one sa ukladem odniesienia plotera - przesuniecie
-   * ich razem z grafika nie naprawiloby niczego.
+   * Kalibracja po probnym CIECIU: przesuwa WSZYSTKIE uzytki naraz, wzgledem
+   * paserow. Paserow nie rusza - to one sa ukladem odniesienia plotera.
    */
   slotOffsetXMm?: number;
   slotOffsetYMm?: number;
+  /**
+   * Kalibracja po probnym WYDRUKU: przesuwa caly arkusz razem z paserami.
+   *
+   * Kompensuje mechanike podajnika - papier wciagniety krzywo daje robote
+   * przesunieta na kartce. Ciecia to nie psuje (ploter kalibruje sie do
+   * znalezionych paserow, wiec zostaja spojne z grafika), ale przy wiekszych
+   * wartosciach pasery moga wyjsc poza obszar, w ktorym ploter ich szuka.
+   *
+   * Zastepuje globalne `PrintSettings.printOffset*`, ktore dla arkusza
+   * z paserami jest zbyt tepym narzedziem: kompensacja dobra dla docinanych
+   * kartek nie musi pasowac do arkusza z innego podajnika.
+   */
+  sheetOffsetXMm?: number;
+  sheetOffsetYMm?: number;
 }
 
 export const A4_SHEET_MM = { widthMm: 210, heightMm: 297 };
