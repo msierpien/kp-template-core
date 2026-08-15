@@ -39,6 +39,12 @@ export interface TemplateLayoutJson {
   variantFieldKey?: string;
   /** Rozmieszczenie stron na arkuszu drukarskim. */
   print?: PrintLayout;
+  /**
+   * Sklad WIELU SZTUK na jednym arkuszu, razem z paserami dla plotera.
+   * Rozne ziarno niz `print`: tam skladaja sie strony jednego egzemplarza
+   * (przod i tyl winietki), tu - kolejne sztuki z zamowienia.
+   */
+  imposition?: SheetImposition;
   /** Wizualizacje projektu na zdjeciach produktu. */
   mockups?: MockupConfig[];
   /**
@@ -137,6 +143,190 @@ export interface PrintLayout {
   placements: PrintPlacement[];
   /** Brak = tryb wynika z wymiarow stron (patrz shouldPrintPagesSeparately). */
   mode?: PrintMode;
+}
+
+// ============================================
+// Sklad wielu sztuk na arkuszu (imposition) + pasery Print & Cut
+// ============================================
+
+/**
+ * Zrodlo paserow na arkuszu.
+ *
+ * `silhouette` - rysujemy je sami wg konfiguracji ponizej.
+ * `none` - nie rysujemy nic, bo pasery sa juz wdrukowane w podklad
+ *   (`backgroundUrl`) przygotowany w Silhouette Studio.
+ */
+export type RegistrationMarkPreset = 'silhouette' | 'none';
+
+/**
+ * Pasery Print & Cut - znaczniki, po ktorych ploter ustawia ciecie.
+ *
+ * Kazdy z czterech rogow to kat prosty otwarty do srodka arkusza: ramie
+ * pionowe i poziome wychodzace z narozy prostokata odsunietego od krawedzi
+ * o `inset*`. Ramiona poziome po PRAWEJ sa krotsze - tak rysuje Silhouette
+ * Studio i tak wygladaja pliki, na ktorych ploter zostal wykalibrowany.
+ */
+export interface RegistrationMarksConfig {
+  preset: RegistrationMarkPreset;
+  /** Odsuniecie ZEWNETRZNEJ krawedzi paserow od krawedzi arkusza, w mm. */
+  insetTopMm: number;
+  insetRightMm: number;
+  insetBottomMm: number;
+  insetLeftMm: number;
+  /** Dlugosc ramienia pionowego (kazdy rog) i poziomego (rogi lewe), w mm. */
+  armLengthMm: number;
+  /** Dlugosc ramienia poziomego po prawej stronie, w mm. */
+  armLengthRightMm: number;
+  thicknessMm: number;
+  color: string;
+}
+
+/**
+ * Domyslne pasery, zmierzone na pliku wyeksportowanym ze Silhouette Studio
+ * (A4, funkcja Print & Cut, ustawienia domyslne: dlugosc 10 mm, grubosc
+ * 0,5 mm, wstawka 15,88 mm = 0,625 cala).
+ *
+ * Nie zmieniac "na oko" - ploter szuka paserow w waskim oknie i kazda zmiana
+ * wymaga ponownego testu ciecia.
+ */
+export const SILHOUETTE_MARKS_DEFAULT: RegistrationMarksConfig = {
+  preset: 'silhouette',
+  insetTopMm: 15.88,
+  insetRightMm: 15.88,
+  insetBottomMm: 15.88,
+  insetLeftMm: 15.88,
+  armLengthMm: 10,
+  armLengthRightMm: 5,
+  thicknessMm: 0.5,
+  color: '#000000',
+};
+
+/**
+ * Jedno gniazdo na arkuszu - miejsce na jedna sztuke z zamowienia.
+ *
+ * `xMm`/`yMm` to lewy gorny rog LINII CIECIA (format netto). Spad, jesli
+ * szablon go ma, wychodzi poza te wspolrzedne - dzieki temu korekta pozycji
+ * w panelu oznacza dokladnie to, co operator widzi na wydruku.
+ */
+export interface ImpositionSlot {
+  id: string;
+  xMm: number;
+  yMm: number;
+  rotation: PrintRotation;
+  /** Ktora strona layoutu trafia w gniazdo. Brak = pierwsza strona. */
+  pageId?: string;
+}
+
+export interface SheetImposition {
+  /** Wylaczony sklad = paczka do druku idzie stara sciezka (sztuka = plik). */
+  enabled: boolean;
+  sheet: { widthMm: number; heightMm: number };
+  slots: ImpositionSlot[];
+  marks?: RegistrationMarksConfig;
+  /** Drukowany podklad pod uzytkami (ozdobna ramka). URL assetu szablonu. */
+  backgroundUrl?: string;
+  /**
+   * Kalibracja po probnym wydruku: przesuwa WSZYSTKIE uzytki naraz.
+   * Paserow nie rusza, bo to one sa ukladem odniesienia plotera - przesuniecie
+   * ich razem z grafika nie naprawiloby niczego.
+   */
+  slotOffsetXMm?: number;
+  slotOffsetYMm?: number;
+}
+
+export const A4_SHEET_MM = { widthMm: 210, heightMm: 297 };
+
+/**
+ * Sklad arkuszowy szablonu albo `null`.
+ *
+ * Konsumenci nie czytaja `layout.imposition` wprost - wylaczony sklad ma
+ * zachowywac sie identycznie jak jego brak, a gniazda bez pozycji nie maja
+ * sensu (dalyby pusty arkusz z samymi paserami).
+ */
+export function getSheetImposition(
+  layout: TemplateLayoutJson | null | undefined
+): SheetImposition | null {
+  const imposition = layout?.imposition;
+  if (!imposition || imposition.enabled !== true) return null;
+  if (!Array.isArray(imposition.slots) || imposition.slots.length === 0) return null;
+  return imposition;
+}
+
+/** Pozycja gniazda po doliczeniu kalibracji arkusza. */
+export function getSlotPositionMm(
+  slot: ImpositionSlot,
+  imposition: SheetImposition
+): { xMm: number; yMm: number } {
+  return {
+    xMm: slot.xMm + (imposition.slotOffsetXMm || 0),
+    yMm: slot.yMm + (imposition.slotOffsetYMm || 0),
+  };
+}
+
+/**
+ * Prostokat, w ktorym wolno klasc uzytki.
+ *
+ * Ploter skanuje okolice paserow, wiec grafika nie moze na nie wchodzic ani
+ * ocierac sie o nie - stad zapas `clearanceMm` wokol znacznikow. Milimetr
+ * wystarcza czujnikowi, a wiekszy zapas zjadalby uzyteczna szerokosc arkusza:
+ * przy domyslnej wstawce 15,88 mm zostaje na uzytki niecale 193 mm.
+ */
+export function getMarksSafeArea(
+  sheet: { widthMm: number; heightMm: number },
+  marks?: RegistrationMarksConfig | null,
+  clearanceMm = 1
+): { xMm: number; yMm: number; widthMm: number; heightMm: number } {
+  if (!marks || marks.preset === 'none') {
+    return { xMm: 0, yMm: 0, widthMm: sheet.widthMm, heightMm: sheet.heightMm };
+  }
+
+  const left = marks.insetLeftMm + marks.thicknessMm + clearanceMm;
+  const top = marks.insetTopMm + marks.thicknessMm + clearanceMm;
+  const right = sheet.widthMm - marks.insetRightMm - marks.thicknessMm - clearanceMm;
+  const bottom = sheet.heightMm - marks.insetBottomMm - marks.thicknessMm - clearanceMm;
+
+  return {
+    xMm: left,
+    yMm: top,
+    widthMm: Math.max(0, right - left),
+    heightMm: Math.max(0, bottom - top),
+  };
+}
+
+/**
+ * Automatyczne rozmieszczenie `count` uzytkow wewnatrz obszaru wolnego od
+ * paserow. Uzytki ida rzedami od lewej-gory, wysrodkowane w calosci - to
+ * punkt wyjscia do recznej korekty, a nie ostateczny sklad.
+ */
+export function defaultImpositionSlots(
+  sheet: { widthMm: number; heightMm: number },
+  page: { widthMm: number; heightMm: number },
+  marks?: RegistrationMarksConfig | null,
+  count = 2,
+  gapMm = 0
+): ImpositionSlot[] {
+  const area = getMarksSafeArea(sheet, marks);
+  const perRow = Math.max(1, Math.floor((area.widthMm + gapMm) / (page.widthMm + gapMm)));
+  const rows = Math.max(1, Math.ceil(count / perRow));
+
+  const usedWidth = perRow * page.widthMm + (perRow - 1) * gapMm;
+  const usedHeight = rows * page.heightMm + (rows - 1) * gapMm;
+  const startX = area.xMm + Math.max(0, (area.widthMm - usedWidth) / 2);
+  const startY = area.yMm + Math.max(0, (area.heightMm - usedHeight) / 2);
+
+  const slots: ImpositionSlot[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const col = index % perRow;
+    const row = Math.floor(index / perRow);
+    slots.push({
+      id: `slot-${index + 1}`,
+      xMm: Number((startX + col * (page.widthMm + gapMm)).toFixed(2)),
+      yMm: Number((startY + row * (page.heightMm + gapMm)).toFixed(2)),
+      rotation: 0,
+    });
+  }
+
+  return slots;
 }
 
 // ============================================
@@ -1013,13 +1203,97 @@ export interface TemplateLayoutWarning {
     | 'BACKGROUND_LAYER_MISSING'
     | 'VARIANT_PAGE_MISSING'
     | 'VARIANT_FIELD_KEY_UNMAPPED'
-    | 'VARIANT_MATCH_VALUE_MISSING';
+    | 'VARIANT_MATCH_VALUE_MISSING'
+    | 'IMPOSITION_SLOT_PAGE_MISSING'
+    | 'IMPOSITION_SLOT_OUT_OF_SHEET'
+    | 'IMPOSITION_SLOT_HITS_MARKS'
+    | 'IMPOSITION_SLOTS_OVERLAP';
   message: string;
   layerId?: string;
   layerName?: string;
   fieldKey?: string;
   variantId?: string;
   pageId?: string;
+  slotId?: string;
+}
+
+/**
+ * Sprawdzenie skladu arkuszowego przed wyslaniem paczki na drukarke.
+ *
+ * Wszystkie trzy bledy - uzytek poza arkuszem, uzytek na paserze i nachodzace
+ * gniazda - wychodza dopiero na wydruku, a wtedy jest juz zmarnowany papier
+ * i czas plotera. Kalibracja (`slotOffset*`) jest tu doliczona, bo to ona
+ * decyduje, gdzie uzytek naprawde wyladuje.
+ */
+export function validateSheetImposition(
+  layout: TemplateLayoutJson | null | undefined
+): TemplateLayoutWarning[] {
+  const imposition = getSheetImposition(layout);
+  if (!imposition) return [];
+
+  const warnings: TemplateLayoutWarning[] = [];
+  const pages = getTemplatePages(layout);
+  const safeArea = getMarksSafeArea(imposition.sheet, imposition.marks);
+
+  const boxes: Array<{ slotId: string; x: number; y: number; w: number; h: number }> = [];
+
+  for (const slot of imposition.slots) {
+    const page = slot.pageId ? pages.find((candidate) => candidate.id === slot.pageId) : pages[0];
+    if (!page) {
+      warnings.push({
+        code: 'IMPOSITION_SLOT_PAGE_MISSING',
+        message: `Gniazdo "${slot.id}" wskazuje stronę "${slot.pageId}", której nie ma w projekcie.`,
+        slotId: slot.id,
+        ...(slot.pageId ? { pageId: slot.pageId } : {}),
+      });
+      continue;
+    }
+
+    // Obrot o 90/270 zamienia boki - uzytek 90x130 polozony bokiem zajmuje
+    // 130x90 i moze wyjsc poza arkusz mimo poprawnych wspolrzednych.
+    const swap = slot.rotation === 90 || slot.rotation === 270;
+    const pageWidthMm = swap ? getCanvasHeightMm(page.canvas) : getCanvasWidthMm(page.canvas);
+    const pageHeightMm = swap ? getCanvasWidthMm(page.canvas) : getCanvasHeightMm(page.canvas);
+    const { xMm, yMm } = getSlotPositionMm(slot, imposition);
+
+    if (xMm < 0 || yMm < 0 || xMm + pageWidthMm > imposition.sheet.widthMm || yMm + pageHeightMm > imposition.sheet.heightMm) {
+      warnings.push({
+        code: 'IMPOSITION_SLOT_OUT_OF_SHEET',
+        message: `Gniazdo "${slot.id}" wychodzi poza arkusz ${imposition.sheet.widthMm}x${imposition.sheet.heightMm} mm.`,
+        slotId: slot.id,
+      });
+    } else if (
+      xMm < safeArea.xMm ||
+      yMm < safeArea.yMm ||
+      xMm + pageWidthMm > safeArea.xMm + safeArea.widthMm ||
+      yMm + pageHeightMm > safeArea.yMm + safeArea.heightMm
+    ) {
+      warnings.push({
+        code: 'IMPOSITION_SLOT_HITS_MARKS',
+        message: `Gniazdo "${slot.id}" wchodzi w strefę paserów - ploter może ich nie odczytać.`,
+        slotId: slot.id,
+      });
+    }
+
+    boxes.push({ slotId: slot.id, x: xMm, y: yMm, w: pageWidthMm, h: pageHeightMm });
+  }
+
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i];
+      const b = boxes[j];
+      const overlaps =
+        a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+      if (!overlaps) continue;
+      warnings.push({
+        code: 'IMPOSITION_SLOTS_OVERLAP',
+        message: `Gniazda "${a.slotId}" i "${b.slotId}" nachodzą na siebie.`,
+        slotId: a.slotId,
+      });
+    }
+  }
+
+  return warnings;
 }
 
 /**
@@ -1033,9 +1307,15 @@ export function validateTemplateVariants(
   layout: TemplateLayoutJson | null | undefined,
   formFieldKeys: string[] = []
 ): TemplateLayoutWarning[] {
-  if (!layout || !Array.isArray(layout.variants) || layout.variants.length === 0) return [];
+  // Sklad arkuszowy nie zalezy od wariantow, wiec sprawdza sie takze w
+  // szablonie z jednym ukladem - stad przed wyjsciem ponizej.
+  const impositionWarnings = validateSheetImposition(layout);
 
-  const warnings: TemplateLayoutWarning[] = [];
+  if (!layout || !Array.isArray(layout.variants) || layout.variants.length === 0) {
+    return impositionWarnings;
+  }
+
+  const warnings: TemplateLayoutWarning[] = [...impositionWarnings];
   const basePageIds = getTemplatePages(layout).map((page) => page.id);
 
   for (const variant of layout.variants) {
