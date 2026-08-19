@@ -114,6 +114,47 @@ export interface TemplatePage {
   name: string;
   canvas: CanvasConfig;
   layers: Layer[];
+  /**
+   * Grupy warstw tej strony. Brak pola = layout sprzed grup - kazdy odczyt
+   * musi to znosic, bo `layoutSnapshot` zamraza layout w chwili zamowienia
+   * i stare sprawy nigdy grup nie dostana.
+   */
+  groups?: LayerGroup[];
+}
+
+/**
+ * Grupa warstw - pojemnik, NIE warstwa.
+ *
+ * Renderery (kp-api, kp-client, mockupy, impozycja) iteruja po plaskiej liscie
+ * `layers` posortowanej po `zIndex`. Grupa jako warstwa zmusilaby kazdy z nich
+ * do rekursji; jako `groupId` na warstwie nie zmusza do niczego - i dlatego
+ * ustawienia grupy MATERIALIZUJEMY w dzieciach w chwili zmiany, zamiast
+ * rozwiazywac je przy renderze.
+ *
+ * `settings` trzyma ostatnia wartosc ustawiona NA GRUPIE. Roznica miedzy nia
+ * a wartoscia warstwy to "nadpisanie" - warstwa, ktora swiadomie nie idzie za
+ * grupa. Bez tego zapisu nie dalo by sie odroznic nadpisania od wartosci,
+ * ktora grupa dopiero co nadala wszystkim.
+ */
+export interface LayerGroup {
+  id: string;
+  name: string;
+  /** Grupa nadrzedna - lista jest plaska, zagniezdzenie opisuje to pole. */
+  parentId?: string;
+  collapsed?: boolean;
+  settings?: LayerGroupSettings;
+}
+
+/** Wartosci nadane calej grupie - do porownania z wartoscia warstwy. */
+export interface LayerGroupSettings {
+  visible?: boolean;
+  locked?: boolean;
+  opacity?: number;
+  fontFamily?: string;
+  fontSize?: number;
+  fill?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  letterSpacing?: number;
 }
 
 /**
@@ -632,6 +673,172 @@ export function withTemplateVariants(
   };
 }
 
+// ============================================
+// Grupy warstw
+// ============================================
+
+/** Grupy strony. Layout sprzed grup zwraca pusta liste, nie `undefined`. */
+export function getPageGroups(page: TemplatePage | null | undefined): LayerGroup[] {
+  if (!page || !Array.isArray(page.groups)) return [];
+  return page.groups;
+}
+
+/**
+ * Warstwy nalezace do grupy. `deep` dolacza takze warstwy grup podrzednych -
+ * bez tego ukrycie grupy nadrzednej ominelo by polowe jej zawartosci.
+ */
+export function getGroupLayers(page: TemplatePage, groupId: string, deep = true): Layer[] {
+  const ids = deep ? new Set(collectGroupTree(page, groupId)) : new Set([groupId]);
+  return (page.layers || []).filter((layer) => layer.groupId && ids.has(layer.groupId));
+}
+
+/** Identyfikatory grupy i wszystkich jej potomkow. */
+export function collectGroupTree(page: TemplatePage, groupId: string): string[] {
+  const groups = getPageGroups(page);
+  const out = [groupId];
+
+  for (let index = 0; index < out.length; index += 1) {
+    const current = out[index];
+    for (const group of groups) {
+      if (group.parentId === current && !out.includes(group.id)) {
+        out.push(group.id);
+      }
+    }
+  }
+
+  return out;
+}
+
+/** Lancuch grup od najblizszej do korzenia - dla etykiet i kaskady ustawien. */
+export function resolveGroupChain(page: TemplatePage, layer: Layer): LayerGroup[] {
+  const groups = getPageGroups(page);
+  const chain: LayerGroup[] = [];
+
+  let currentId = layer.groupId;
+  while (currentId) {
+    const group = groups.find((entry) => entry.id === currentId);
+    if (!group || chain.some((entry) => entry.id === group.id)) break;
+    chain.push(group);
+    currentId = group.parentId;
+  }
+
+  return chain;
+}
+
+/**
+ * Ustawienia grupy widziane przez warstwe - blizsza grupa wygrywa z dalsza.
+ * Sama warstwa NIE jest tu brana pod uwage: porownanie jej wartosci z tym
+ * wynikiem daje wlasnie liste nadpisan.
+ */
+export function resolveGroupSettings(page: TemplatePage, layer: Layer): LayerGroupSettings {
+  const chain = resolveGroupChain(page, layer);
+  const settings: LayerGroupSettings = {};
+
+  // Od korzenia w dol, zeby blizsza grupa nadpisala dalsza.
+  for (const group of [...chain].reverse()) {
+    Object.assign(settings, group.settings || {});
+  }
+
+  return settings;
+}
+
+export function withPageGroups(page: TemplatePage, groups: LayerGroup[]): TemplatePage {
+  return { ...page, groups };
+}
+
+/**
+ * Zsuwa warstwy kazdej grupy do CIAGLEGO zakresu `zIndex`.
+ *
+ * Grupa przeplatana warstwami z zewnatrz nie jest grupa: przesuniecie jej
+ * w kolejnosci przenosiloby tez cudze warstwy, a "wyzej/nizej" na grupie
+ * nie mialoby jednoznacznego znaczenia. Kolejnosc wewnatrz grupy i pozycje
+ * grupy wzgledem reszty wyznacza NAJWYZSZA warstwa grupy - tam, gdzie
+ * projektant ja ostatnio przeciagnal.
+ */
+export function normalizeGroupZIndex(page: TemplatePage): TemplatePage {
+  const layers = page.layers || [];
+  if (layers.length === 0) return page;
+  if (!layers.some((layer) => layer.groupId)) return page;
+
+  const sorted = [...layers].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+
+  // Klucz porzadkowy: dla warstwy w grupie - najwyzszy zIndex tej grupy,
+  // zeby cala grupa wskoczyla tam, gdzie stoi jej wierzcholek.
+  const groupTop = new Map<string, number>();
+  for (const layer of sorted) {
+    if (!layer.groupId) continue;
+    const current = groupTop.get(layer.groupId) ?? Number.NEGATIVE_INFINITY;
+    groupTop.set(layer.groupId, Math.max(current, layer.zIndex ?? 0));
+  }
+
+  const ordered = sorted
+    .map((layer, index) => ({
+      layer,
+      // `index` rozstrzyga remisy - stabilnie, wg dotychczasowej kolejnosci.
+      key: layer.groupId ? (groupTop.get(layer.groupId) ?? 0) : (layer.zIndex ?? 0),
+      index,
+      group: layer.groupId ?? '',
+    }))
+    .sort((a, b) => a.key - b.key || a.group.localeCompare(b.group) || a.index - b.index);
+
+  let changed = false;
+  const next = ordered.map((entry, index) => {
+    if ((entry.layer.zIndex ?? 0) === index) return entry.layer;
+    changed = true;
+    return { ...entry.layer, zIndex: index } as Layer;
+  });
+
+  return changed ? { ...page, layers: next } : page;
+}
+
+/**
+ * Przypisanie warstw do grupy (albo wypiecie ich przez `groupId = null`).
+ * Zawsze konczy sie normalizacja zIndeksow - patrz wyzej.
+ */
+export function assignGroup(
+  page: TemplatePage,
+  layerIds: string[],
+  groupId: string | null
+): TemplatePage {
+  if (layerIds.length === 0) return page;
+
+  const targets = new Set(layerIds);
+  const layers = (page.layers || []).map((layer) => {
+    if (!targets.has(layer.id)) return layer;
+    if (groupId) return { ...layer, groupId } as Layer;
+
+    const { groupId: _removed, ...rest } = layer as Layer & { groupId?: string };
+    return rest as Layer;
+  });
+
+  return normalizeGroupZIndex({ ...page, layers });
+}
+
+/**
+ * Rozgrupowanie: warstwy zostaja na projekcie, znika sam pojemnik.
+ *
+ * Ustawienia grupy sa juz zmaterializowane w warstwach, wiec nie ma czego
+ * przepisywac - projekt wyglada tak samo przed i po.
+ */
+export function ungroupLayers(page: TemplatePage, groupId: string): TemplatePage {
+  const tree = new Set(collectGroupTree(page, groupId));
+  const groups = getPageGroups(page).filter((group) => !tree.has(group.id));
+  const layers = (page.layers || []).map((layer) => {
+    if (!layer.groupId || !tree.has(layer.groupId)) return layer;
+    const { groupId: _removed, ...rest } = layer as Layer & { groupId?: string };
+    return rest as Layer;
+  });
+
+  return normalizeGroupZIndex({ ...page, layers, groups });
+}
+
+/** Grupy bez zadnej warstwy - zostaja po skasowaniu ostatniego dziecka. */
+export function findEmptyGroups(page: TemplatePage): LayerGroup[] {
+  const used = new Set((page.layers || []).map((layer) => layer.groupId).filter(Boolean));
+  const parents = new Set(getPageGroups(page).map((group) => group.parentId).filter(Boolean));
+  return getPageGroups(page).filter((group) => !used.has(group.id) && !parents.has(group.id));
+}
+
 /**
  * Zapisuje strony z powrotem do layoutu, utrzymujac `canvas`/`layers` jako
  * lustro pierwszej strony (wstecznosc dla starych konsumentow).
@@ -803,6 +1010,8 @@ export interface LayerBase {
   id: string;
   name: string;
   type: LayerType;
+  /** Grupa, do ktorej warstwa nalezy. Brak = warstwa stoi luzem. */
+  groupId?: string;
   visible: boolean;
   locked: boolean;
   opacity: number;      // 0-1
@@ -1377,7 +1586,11 @@ export interface TemplateLayoutWarning {
     | 'IMPOSITION_SLOT_PAGE_MISSING'
     | 'IMPOSITION_SLOT_OUT_OF_SHEET'
     | 'IMPOSITION_SLOT_HITS_MARKS'
-    | 'IMPOSITION_SLOTS_OVERLAP';
+    | 'IMPOSITION_SLOTS_OVERLAP'
+    | 'LAYER_GROUP_MISSING'
+    | 'GROUP_EMPTY'
+    | 'GROUP_PARENT_MISSING'
+    | 'GROUP_ZINDEX_INTERLEAVED';
   message: string;
   layerId?: string;
   layerName?: string;
@@ -1385,6 +1598,7 @@ export interface TemplateLayoutWarning {
   variantId?: string;
   pageId?: string;
   slotId?: string;
+  groupId?: string;
 }
 
 /**
@@ -1467,6 +1681,86 @@ export function validateSheetImposition(
 }
 
 /**
+ * Spojnosc grup warstw na wszystkich stronach layoutu.
+ *
+ * Wszystko to sa OSTRZEZENIA, nie bledy - layout musi dac sie zapisac takze
+ * w stanie posrednim (skasowana ostatnia warstwa grupy, wariant skopiowany
+ * miedzy stronami). Blokada zapisu odcielaby projektanta od jego wlasnej pracy.
+ */
+export function validateLayerGroups(
+  layout: TemplateLayoutJson | null | undefined
+): TemplateLayoutWarning[] {
+  const warnings: TemplateLayoutWarning[] = [];
+
+  for (const page of getTemplatePages(layout)) {
+    const groups = getPageGroups(page);
+    if (groups.length === 0 && !(page.layers || []).some((layer) => layer.groupId)) continue;
+
+    const byId = new Map(groups.map((group) => [group.id, group]));
+
+    for (const layer of page.layers || []) {
+      if (layer.groupId && !byId.has(layer.groupId)) {
+        warnings.push({
+          code: 'LAYER_GROUP_MISSING',
+          message: `Warstwa „${layer.name}" wskazuje grupę, której nie ma na stronie „${page.name}".`,
+          layerId: layer.id,
+          layerName: layer.name,
+          pageId: page.id,
+          groupId: layer.groupId,
+        });
+      }
+    }
+
+    for (const group of findEmptyGroups(page)) {
+      warnings.push({
+        code: 'GROUP_EMPTY',
+        message: `Grupa „${group.name}" na stronie „${page.name}" nie ma żadnej warstwy.`,
+        pageId: page.id,
+        groupId: group.id,
+      });
+    }
+
+    for (const group of groups) {
+      if (group.parentId && !byId.has(group.parentId)) {
+        warnings.push({
+          code: 'GROUP_PARENT_MISSING',
+          message: `Grupa „${group.name}" należy do grupy, której nie ma na stronie „${page.name}".`,
+          pageId: page.id,
+          groupId: group.id,
+        });
+      }
+    }
+
+    // Przeplot: warstwa spoza grupy stoi w kolejnosci MIEDZY jej warstwami.
+    // Wtedy "wyzej/nizej" na grupie przenosiloby cudze warstwy.
+    const sorted = [...(page.layers || [])].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
+    const seen = new Set<string>();
+    const closed = new Set<string>();
+    let previousGroup = '';
+
+    for (const layer of sorted) {
+      const groupId = layer.groupId ?? '';
+      if (groupId !== previousGroup) {
+        if (previousGroup) closed.add(previousGroup);
+        if (groupId && closed.has(groupId)) {
+          const group = byId.get(groupId);
+          warnings.push({
+            code: 'GROUP_ZINDEX_INTERLEAVED',
+            message: `Grupa „${group?.name ?? groupId}" na stronie „${page.name}" przeplata się z warstwami spoza grupy.`,
+            pageId: page.id,
+            groupId,
+          });
+        }
+        previousGroup = groupId;
+      }
+      if (groupId) seen.add(groupId);
+    }
+  }
+
+  return warnings;
+}
+
+/**
  * Spojnosc wariantow ze skladem do druku i mockupami.
  *
  * Sklad i mockupy wskazuja strony po `pageId` i sa wspolne dla calego szablonu,
@@ -1477,9 +1771,9 @@ export function validateTemplateVariants(
   layout: TemplateLayoutJson | null | undefined,
   formFieldKeys: string[] = []
 ): TemplateLayoutWarning[] {
-  // Sklad arkuszowy nie zalezy od wariantow, wiec sprawdza sie takze w
-  // szablonie z jednym ukladem - stad przed wyjsciem ponizej.
-  const impositionWarnings = validateSheetImposition(layout);
+  // Sklad arkuszowy i grupy nie zaleza od wariantow, wiec sprawdzaja sie takze
+  // w szablonie z jednym ukladem - stad przed wyjsciem ponizej.
+  const impositionWarnings = [...validateSheetImposition(layout), ...validateLayerGroups(layout)];
 
   if (!layout || !Array.isArray(layout.variants) || layout.variants.length === 0) {
     return impositionWarnings;
