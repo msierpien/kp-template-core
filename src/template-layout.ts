@@ -1012,6 +1012,14 @@ export interface LayerBase {
   type: LayerType;
   /** Grupa, do ktorej warstwa nalezy. Brak = warstwa stoi luzem. */
   groupId?: string;
+  /**
+   * Blok z biblioteki, z ktorego warstwa powstala.
+   *
+   * Sam znacznik pochodzenia - warstwa jest zwykla warstwa projektu i zyje
+   * dalej wlasnym zyciem. Po nim panel rozpoznaje instancje bloku na liscie
+   * warstw i bedzie umial zaproponowac aktualizacje po zmianie w bibliotece.
+   */
+  blockId?: string;
   visible: boolean;
   locked: boolean;
   opacity: number;      // 0-1
