@@ -197,6 +197,42 @@ export const layoutOverridesSchema = z.object({
 
 export type LayoutOverridesInput = z.infer<typeof layoutOverridesSchema>;
 
+/**
+ * Nadpisanie JEDNEJ warstwy - typ wyprowadzony wprost ze schematu zapisu.
+ *
+ * Do 2026-08-19 ten sam ksztalt zyl w trzech kopiach (kp-admin, kp-client
+ * w dwoch miejscach), kazda innej dlugosci: panel znal cztery klucze stylu,
+ * portal osiem. Rozjazd nie objawial sie bledem - tylko tym, ze w panelu
+ * "nie dzialalo" cos, co portal zapisywal poprawnie. Zrodlem prawdy jest
+ * teraz zod, ktory i tak decyduje, co wejdzie do bazy.
+ */
+export type LayoutLayerOverride = z.infer<typeof layerOverrideSchema>;
+
+export type LayoutOverrides = LayoutOverridesInput;
+
+/**
+ * Klucze nadpisania, ktore trafiaja do `properties` warstwy.
+ *
+ * Reszta (`x`, `zIndex`, `visible`…) to pola samej warstwy. Ta lista MUSI byc
+ * zgodna z `mergeLayoutWithOverrides` w kp-api - to ona decyduje, co zobaczy
+ * renderer druku, a rozjazd oznacza podglad inny niz wydruk.
+ *
+ * `autoFit` NIE jest tu celowo: to instrukcja dla edytora (czy zmniejszac
+ * stopien pisma), a nie wlasciwosc, ktora renderer ma nalozyc na warstwe.
+ */
+export const STYLE_OVERRIDE_KEYS = [
+  'fontSize',
+  'fontFamily',
+  'fill',
+  'textAlign',
+  'fontWeight',
+  'lineHeight',
+  'text',
+  'tint',
+] as const;
+
+export type StyleOverrideKey = (typeof STYLE_OVERRIDE_KEYS)[number];
+
 export type LayoutOverridesParseResult =
   | { ok: true; data: LayoutOverridesInput | undefined; dropped: string[] }
   | { ok: false; message: string };

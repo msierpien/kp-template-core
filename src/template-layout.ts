@@ -673,6 +673,33 @@ export function withTemplateVariants(
   };
 }
 
+/**
+ * Warstwa widziana przez EDYTOR - tyle, ile trzeba, zeby ja narysowac
+ * i przesunac, bez znajomosci `properties` konkretnego rodzaju.
+ *
+ * Kanwa (fabric) i panele wlasciwosci w kp-admin i kp-client pracowaly na
+ * dwoch osobnych kopiach tego typu. Rozne kopie znaczyly rozne rzeczy przy
+ * pierwszej zmianie formatu - stad jedna, tutaj.
+ */
+export interface LayerGeometry {
+  id: string;
+  type: LayerType;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  visible?: boolean;
+  locked?: boolean;
+  opacity?: number;
+  zIndex?: number;
+  /** Grupa, do ktorej warstwa nalezy - patrz `LayerGroup`. */
+  groupId?: string;
+  /** Blok z biblioteki, z ktorego warstwa powstala. */
+  blockId?: string;
+  properties: object;
+}
+
 // ============================================
 // Grupy warstw
 // ============================================
