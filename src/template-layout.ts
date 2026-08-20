@@ -65,6 +65,17 @@ export interface TemplateLayoutJson {
   primaryColor?: string;
 
   /**
+   * Nazwane style tekstu ("Naglowek", "Data", "Podpis").
+   *
+   * Kaskada jest MATERIALIZOWANA, tak samo jak przy grupach warstw: nadanie
+   * stylu wpisuje wartosci wprost w warstwy, a warstwa pamieta tylko `styleId`.
+   * Dzieki temu renderery - druk, portal, mockupy, impozycja - nie musza
+   * wiedziec o stylach w ogole, a roznica miedzy definicja stylu a wartoscia
+   * warstwy mowi, ktora warstwe swiadomie odklejono.
+   */
+  textStyles?: TextStyle[];
+
+  /**
    * Korekta pozycji wydruku dla TEGO szablonu, w milimetrach.
    *
    * Osobna od korekty globalnej w ustawieniach druku, bo kompensuje co innego:
@@ -198,6 +209,34 @@ export interface LayerGroupSettings {
   textAlign?: 'left' | 'center' | 'right';
   letterSpacing?: number;
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+}
+
+/**
+ * Wlasciwosci, ktore niesie nazwany styl tekstu.
+ *
+ * Ten sam zestaw, ktory grupa warstw potrafi nadac (`LayerGroupSettings`),
+ * poszerzony o reszte typografii. Swiadomie BEZ tla, ramki i wyrownania
+ * w pionie: te dotycza tylko `textbox` i styl przestalby byc stylem pisma,
+ * a zaczal byc szablonem warstwy.
+ */
+export interface TextStyleProperties {
+  fontFamily?: string;
+  fontSize?: number;
+  fontUnit?: 'px' | 'pt';
+  fontWeight?: number;
+  fontStyle?: 'normal' | 'italic';
+  lineHeight?: number;
+  letterSpacing?: number;
+  fill?: string;
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+}
+
+/** Nazwany styl tekstu, wspolny dla wszystkich stron i wariantow projektu. */
+export interface TextStyle {
+  id: string;
+  name: string;
+  properties: TextStyleProperties;
 }
 
 /**
@@ -1250,6 +1289,13 @@ export interface TextFieldProperties {
   stroke?: string;
   /** Grubosc obrysu w milimetrach. Brak albo 0 = bez obrysu. */
   strokeWidthMm?: number;
+  /**
+   * Nazwany styl tekstu, z ktorego warstwa wziela typografie.
+   *
+   * Sama etykieta - wartosci sa juz wpisane we wlasciwosciach warstwy
+   * (kaskada materializowana). Renderery tego pola nie czytaja.
+   */
+  styleId?: string;
   /** Style fragmentow - patrz TextBoxProperties.styleRanges. */
   styleRanges?: TextStyleRange[];
   // Client interaction settings
@@ -1380,6 +1426,11 @@ export interface TextBoxProperties {
    */
   letterSpacing?: number;
   /**
+   * Nazwany styl tekstu, z ktorego warstwa wziela typografie. Patrz
+   * `TextFieldProperties.styleId`.
+   */
+  styleId?: string;
+  /**
    * Style fragmentow tekstu (pogrubienie, kursywa, kolor). Puste albo brak =
    * caly tekst w stylu warstwy.
    *
@@ -1478,6 +1529,11 @@ export interface TextPathProperties {
   stroke?: string;
   strokeWidthMm?: number;
 
+  /**
+   * Nazwany styl tekstu, z ktorego warstwa wziela typografie. Patrz
+   * `TextFieldProperties.styleId`.
+   */
+  styleId?: string;
 
   // --- zgody klienta ---
   clientFontSize?: boolean;
