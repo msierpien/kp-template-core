@@ -63,6 +63,22 @@ export interface TemplateLayoutJson {
    * Brak = warstwy zostaja przy swoich wlasnych kolorach.
    */
   primaryColor?: string;
+
+  /**
+   * Korekta pozycji wydruku dla TEGO szablonu, w milimetrach.
+   *
+   * Osobna od korekty globalnej w ustawieniach druku, bo kompensuje co innego:
+   * globalna dotyczy mechaniki podajnika i obowiazuje kazdy wydruk, a ta
+   * poprawia konkretny FORMAT - drukarka inaczej prowadzi winietke 90x50,
+   * a inaczej kartke A6, i poprawka dobra dla jednej psuje druga.
+   *
+   * Dodatnia wartosc przesuwa projekt w prawo / w dol. Arkusz zbiorczy ma
+   * wlasna kalibracje (`slotOffset*`) i tej NIE dolicza - jedzie innym torem
+   * podajnika, a przesuniete pasery moglyby wyjsc poza obszar, w ktorym ploter
+   * ich szuka.
+   */
+  printOffsetXMm?: number;
+  printOffsetYMm?: number;
 }
 
 // ============================================
