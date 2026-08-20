@@ -79,6 +79,32 @@ export interface TemplateLayoutJson {
    */
   printOffsetXMm?: number;
   printOffsetYMm?: number;
+
+  /**
+   * Profil druku, ktorym ma sie drukowac ten szablon.
+   *
+   * Profil to komplet ustawien maszyny: drukarka, format papieru, podajnik,
+   * jakosc i rodzaj papieru. Zyje w konfiguracji agenta na maszynie przy
+   * drukarce, bo tylko tam wiadomo, jakie wartosci przyjmuje sterownik - tu
+   * trzymamy sam WYBOR, zeby operator nie odtwarzal go z pamieci przy kazdym
+   * wydruku.
+   *
+   * Wskazujemy po NAZWIE, nie po id agenta: agent bywa zakladany na nowo (nowy
+   * Mac, nowy token), a nazwa profilu przezywa te operacje. Gdy agent takiego
+   * profilu nie zna, okno druku wraca do recznego wyboru i mowi o tym wprost -
+   * nigdy nie drukuje "czymkolwiek".
+   */
+  printProfile?: TemplatePrintProfile;
+}
+
+export interface TemplatePrintProfile {
+  /** Nazwa profilu w konfiguracji agenta, np. `winietki-105x100`. */
+  profile: string;
+  /**
+   * Odstepstwa od profilu, klucz opcji sterownika -> wartosc (np. jakosc druku
+   * albo rodzaj papieru). Pusty obiekt znaczy "wszystko jak w profilu".
+   */
+  options?: Record<string, string>;
 }
 
 // ============================================
