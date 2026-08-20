@@ -57,9 +57,11 @@ test('obrys liczy grubosc z milimetrow, bez zaokraglania do pelnych pikseli', ()
   const stroke = resolveTextStroke({ stroke: '#ffffff', strokeWidthMm: 0.2 }, 300);
   assert.ok(stroke);
   assert.equal(stroke!.stroke, '#ffffff');
-  // 0,2 mm przy 300 dpi to 2,36 px - zaokraglenie zjadaloby cala roznice
+  // 0,2 mm przy 300 dpi to 2,36 px, razy dwa bo polowe obrysu zakrywa
+  // wypelnienie. Zaokraglenie do pelnych pikseli zjadaloby cala roznice
   // miedzy "ledwie widoczny" a "gruby".
-  assert.ok(Math.abs(stroke!.strokeWidth - 2.362) < 0.01, String(stroke!.strokeWidth));
+  assert.ok(Math.abs(stroke!.strokeWidth - 4.724) < 0.01, String(stroke!.strokeWidth));
+  assert.equal(stroke!.paintFirst, 'stroke', 'obrys musi isc pod wypelnienie');
 });
 
 test('obrys skaluje sie razem z podgladem', () => {

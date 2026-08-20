@@ -63,6 +63,14 @@ export interface TextStrokeInput {
 export interface TextStroke {
   stroke: string;
   strokeWidth: number;
+  /**
+   * Obrys malowany POD wypelnieniem.
+   *
+   * Domyslnie fabric rysuje go na wierzchu i kontur zjada wnetrze glifu -
+   * litera robi sie ciensza, a przy grubszym obrysie zlewa sie w plame.
+   * Pod spodem litera zachowuje pelny ksztalt, a obrys ja otacza.
+   */
+  paintFirst: 'stroke';
 }
 
 const TRANSPARENT = new Set(['', 'none', 'transparent']);
@@ -85,5 +93,12 @@ export function resolveTextStroke(
   const mm = Number(properties?.strokeWidthMm);
   if (!Number.isFinite(mm) || mm <= 0) return null;
 
-  return { stroke, strokeWidth: (mm / 25.4) * dpi * scale };
+  // Razy dwa, bo fabric centruje obrys na konturze glifu, a wypelnienie
+  // zakrywa jego wewnetrzna polowe. Bez tego "0,4 mm" ustawione w panelu
+  // dawaloby 0,2 mm widocznego obrysu na papierze.
+  return {
+    stroke,
+    strokeWidth: (mm / 25.4) * dpi * scale * 2,
+    paintFirst: 'stroke',
+  };
 }
