@@ -171,6 +171,7 @@ export interface LayerGroupSettings {
   fill?: string;
   textAlign?: 'left' | 'center' | 'right';
   letterSpacing?: number;
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 }
 
 /**
@@ -1209,6 +1210,20 @@ export interface TextFieldProperties {
    * sposob, zeby napis oddychal - sam rozmiar pisma tego nie zalatwia.
    */
   letterSpacing?: number;
+  /**
+   * Obrys glifow - kolor i grubosc w milimetrach.
+   *
+   * Jedyny sposob, zeby jasny napis zostal czytelny na fotograficznym tle bez
+   * podkladania pod niego prostokata. Nazwa `stroke` jest ta sama co w figurze
+   * NIE przez przypadek: dzieki temu obrys tekstu przechodzi przez kaskade
+   * koloru wiodacego (`withResolvedPrimaryColor`) bez zadnego dodatkowego kodu.
+   *
+   * Cienia swiadomie nie ma: obrys ma pelne krycie, wiec drukarnia dostaje to,
+   * co widzi projektant, bez rozmowy o splaszczaniu przezroczystosci.
+   */
+  stroke?: string;
+  /** Grubosc obrysu w milimetrach. Brak albo 0 = bez obrysu. */
+  strokeWidthMm?: number;
   /** Style fragmentow - patrz TextBoxProperties.styleRanges. */
   styleRanges?: TextStyleRange[];
   // Client interaction settings
@@ -1245,6 +1260,21 @@ export interface StaticTextProperties {
   fill: string;
   textAlign: 'left' | 'center' | 'right';
   lineHeight: number;
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  /**
+   * Obrys glifow - kolor i grubosc w milimetrach.
+   *
+   * Jedyny sposob, zeby jasny napis zostal czytelny na fotograficznym tle bez
+   * podkladania pod niego prostokata. Nazwa `stroke` jest ta sama co w figurze
+   * NIE przez przypadek: dzieki temu obrys tekstu przechodzi przez kaskade
+   * koloru wiodacego (`withResolvedPrimaryColor`) bez zadnego dodatkowego kodu.
+   *
+   * Cienia swiadomie nie ma: obrys ma pelne krycie, wiec drukarnia dostaje to,
+   * co widzi projektant, bez rozmowy o splaszczaniu przezroczystosci.
+   */
+  stroke?: string;
+  /** Grubosc obrysu w milimetrach. Brak albo 0 = bez obrysu. */
+  strokeWidthMm?: number;
   editable: false;
 }
 
@@ -1301,6 +1331,20 @@ export interface TextBoxProperties {
   editable: boolean;          // czy edytowalne przez klienta
   /** Lamanie po znakach zamiast slowach (pismo CJK). */
   splitByGrapheme?: boolean;
+  /**
+   * Wielkosc liter napisu.
+   *
+   * Doszlo pozniej niz w `TextFieldProperties`, bo pole tekstowe dostawalo
+   * tresc z panelu i wersaliki dalo sie wpisac recznie - kosztem tego, ze
+   * ta sama tresc w polu formularza klienta wygladala juz inaczej.
+   */
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  /**
+   * Obrys glifow - kolor i grubosc w milimetrach. Patrz `TextFieldProperties`.
+   */
+  stroke?: string;
+  strokeWidthMm?: number;
+
   /**
    * Swiatlo miedzy literami w tysiecznych firetu (jednostka fabrica
    * `charSpacing`): 50 = 0,05 em. Dodatnie rozstrzela, ujemne sciesnia.
@@ -1402,6 +1446,12 @@ export interface TextPathProperties {
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   /** Swiatlo miedzy literami w tysiecznych firetu - jak w `TextFieldProperties`. */
   letterSpacing?: number;
+  /**
+   * Obrys glifow - kolor i grubosc w milimetrach. Patrz `TextFieldProperties`.
+   */
+  stroke?: string;
+  strokeWidthMm?: number;
+
 
   // --- zgody klienta ---
   clientFontSize?: boolean;
